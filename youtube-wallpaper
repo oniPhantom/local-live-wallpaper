@@ -1,0 +1,22 @@
+#!/bin/zsh
+set -euo pipefail
+
+config_dir="$HOME/Library/Application Support/CodexLiveWallpaper"
+config_file="$config_dir/youtube-url.txt"
+app="/Applications/CodexLiveWallpaper.app"
+
+if [[ $# -ne 1 ]]; then
+  echo "usage: youtube-wallpaper <youtube-url|off>" >&2
+  exit 64
+fi
+
+mkdir -p "$config_dir"
+
+if [[ "$1" == "off" ]]; then
+  rm -f "$config_file"
+else
+  print -r -- "$1" > "$config_file"
+fi
+
+pkill CodexLiveWallpaper 2>/dev/null || true
+open -a "$app"
