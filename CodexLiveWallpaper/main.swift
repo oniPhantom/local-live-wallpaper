@@ -80,6 +80,27 @@ enum WallpaperSource {
         !FileManager.default.fileExists(atPath: batteryPauseOffURL.path)
     }
 
+    static let panelOriginURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/panel-origin.txt")
+
+    // ユーザーがドラッグしたパネル位置(スクリーン座標の origin)
+    static func panelOrigin() -> NSPoint? {
+        guard let raw = try? String(contentsOf: panelOriginURL, encoding: .utf8) else {
+            return nil
+        }
+        let parts = raw.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ",")
+        guard parts.count == 2, let x = Double(parts[0]), let y = Double(parts[1]) else {
+            return nil
+        }
+        return NSPoint(x: x, y: y)
+    }
+
+    static func savePanelOrigin(_ point: NSPoint) {
+        try? FileManager.default.createDirectory(at: panelOriginURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? "\(point.x),\(point.y)\n".write(to: panelOriginURL, atomically: true, encoding: .utf8)
+    }
+
     static let fitModeURL = FileManager.default
         .homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/fit-mode.txt")
@@ -527,6 +548,8 @@ final class YouTubeView: WKWebView, WKScriptMessageHandler {
             if (v && v.duration > 0) status.progress = v.currentTime / v.duration;
             if (v) {
               status.playing = !v.paused && !v.ended;
+              status.currentTime = v.currentTime || 0;
+              status.duration = (isFinite(v.duration) && v.duration > 0) ? v.duration : 0;
               // フィット検証用: video の実描画位置とビューポートサイズ
               var r = v.getBoundingClientRect();
               status.rect = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
@@ -710,13 +733,18 @@ final class VolumePanel: NSPanel {
         ("480p", "large"),
     ]
 
-    private let expandedSize = NSSize(width: 300, height: 148)
+    private let expandedSize = NSSize(width: 300, height: 158)
     private let collapsedSize = NSSize(width: 300, height: 34)
     private let root: NSVisualEffectView
     private let valueLabel = NSTextField(labelWithString: "0")
     private let progressBar = ProgressBar(frame: NSRect(x: 16, y: 14, width: 268, height: 14))
     private let collapseButton = NSButton(frame: .zero)
+    private let playButton = NSButton(frame: .zero)
     private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let currentTimeLabel = NSTextField(labelWithString: "--:--")
+    private let durationLabel = NSTextField(labelWithString: "--:--")
+    private let stateLabel = NSTextField(labelWithString: "")
+    private var isPlayingIcon = false
     private var collapsibleViews: [NSView] = []
     private var isCollapsed = false
 
@@ -731,6 +759,8 @@ final class VolumePanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
+        // 背景の空き部分をドラッグしてパネルを移動できるようにする
+        isMovableByWindowBackground = true
 
         root.material = .hudWindow
         root.blendingMode = .behindWindow
@@ -741,7 +771,7 @@ final class VolumePanel: NSPanel {
         root.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
 
         // ヘッダー: ロゴ + タイトル / 画質 / 折りたたみ
-        let logo = NSImageView(frame: NSRect(x: 16, y: 116, width: 18, height: 18))
+        let logo = NSImageView(frame: NSRect(x: 16, y: 126, width: 18, height: 18))
         logo.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
         logo.contentTintColor = NSColor(calibratedRed: 1.0, green: 0.18, blue: 0.13, alpha: 1)
@@ -749,13 +779,13 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(logo)
 
         let title = NSTextField(labelWithString: "YouTube Wallpaper")
-        title.frame = NSRect(x: 39, y: 117, width: 140, height: 16)
+        title.frame = NSRect(x: 39, y: 127, width: 140, height: 16)
         title.textColor = NSColor(calibratedWhite: 1, alpha: 0.92)
         title.font = .systemFont(ofSize: 11, weight: .semibold)
         root.addSubview(title)
         collapsibleViews.append(title)
 
-        qualityPopUp.frame = NSRect(x: 184, y: 113, width: 80, height: 22)
+        qualityPopUp.frame = NSRect(x: 184, y: 123, width: 80, height: 22)
         qualityPopUp.controlSize = .small
         qualityPopUp.font = .systemFont(ofSize: 10, weight: .medium)
         Self.qualityOptions.forEach { qualityPopUp.addItem(withTitle: $0.title) }
@@ -769,27 +799,27 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(qualityPopUp)
 
         configureIconButton(collapseButton, symbol: "chevron.down", size: 11, action: #selector(toggleCollapsed))
-        collapseButton.frame = NSRect(x: 266, y: 114, width: 20, height: 20)
+        collapseButton.frame = NSRect(x: 266, y: 124, width: 20, height: 20)
         root.addSubview(collapseButton)
 
         // トランスポート(中央寄せ)
         let previousButton = makeIconButton(symbol: "backward.fill", size: 15, action: #selector(previousTapped))
-        previousButton.frame = NSRect(x: 92, y: 66, width: 36, height: 30)
+        previousButton.frame = NSRect(x: 92, y: 76, width: 36, height: 30)
         root.addSubview(previousButton)
         collapsibleViews.append(previousButton)
 
-        let playButton = makeIconButton(symbol: "playpause.fill", size: 19, action: #selector(playTapped))
-        playButton.frame = NSRect(x: 132, y: 64, width: 36, height: 34)
+        configureIconButton(playButton, symbol: "play.fill", size: 19, action: #selector(playTapped))
+        playButton.frame = NSRect(x: 132, y: 74, width: 36, height: 34)
         root.addSubview(playButton)
         collapsibleViews.append(playButton)
 
         let nextButton = makeIconButton(symbol: "forward.fill", size: 15, action: #selector(nextTapped))
-        nextButton.frame = NSRect(x: 172, y: 66, width: 36, height: 30)
+        nextButton.frame = NSRect(x: 172, y: 76, width: 36, height: 30)
         root.addSubview(nextButton)
         collapsibleViews.append(nextButton)
 
         // 音量
-        let speaker = NSImageView(frame: NSRect(x: 16, y: 40, width: 16, height: 16))
+        let speaker = NSImageView(frame: NSRect(x: 16, y: 50, width: 16, height: 16))
         speaker.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
         speaker.contentTintColor = NSColor(calibratedWhite: 1, alpha: 0.6)
@@ -797,18 +827,40 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(speaker)
 
         let slider = NSSlider(value: Double(volume), minValue: 0, maxValue: 100, target: self, action: #selector(changed(_:)))
-        slider.frame = NSRect(x: 38, y: 38, width: 206, height: 20)
+        slider.frame = NSRect(x: 38, y: 48, width: 206, height: 20)
         slider.controlSize = .small
         slider.isContinuous = true
         root.addSubview(slider)
         collapsibleViews.append(slider)
 
-        valueLabel.frame = NSRect(x: 250, y: 40, width: 34, height: 16)
+        valueLabel.frame = NSRect(x: 250, y: 50, width: 34, height: 16)
         valueLabel.alignment = .right
         valueLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.6)
         valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
         root.addSubview(valueLabel)
         collapsibleViews.append(valueLabel)
+
+        // 時間・再生状態の行
+        currentTimeLabel.frame = NSRect(x: 16, y: 30, width: 84, height: 13)
+        currentTimeLabel.alignment = .left
+        currentTimeLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.75)
+        currentTimeLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        root.addSubview(currentTimeLabel)
+        collapsibleViews.append(currentTimeLabel)
+
+        stateLabel.frame = NSRect(x: 100, y: 30, width: 100, height: 13)
+        stateLabel.alignment = .center
+        stateLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.45)
+        stateLabel.font = .systemFont(ofSize: 9, weight: .medium)
+        root.addSubview(stateLabel)
+        collapsibleViews.append(stateLabel)
+
+        durationLabel.frame = NSRect(x: 200, y: 30, width: 84, height: 13)
+        durationLabel.alignment = .right
+        durationLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.75)
+        durationLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        root.addSubview(durationLabel)
+        collapsibleViews.append(durationLabel)
 
         // シーク
         progressBar.onSeek = { [weak self] percent in
@@ -847,6 +899,35 @@ final class VolumePanel: NSPanel {
         progressBar.setProgress(progress)
     }
 
+    // 実再生状態を表示に反映: 再生ボタンのアイコン・状態テキスト・時間表示
+    func updateStatus(playing: Bool, currentTime: Double, duration: Double) {
+        if playing != isPlayingIcon {
+            isPlayingIcon = playing
+            configureIconButton(playButton, symbol: playing ? "pause.fill" : "play.fill", size: 19, action: #selector(playTapped))
+        }
+        stateLabel.stringValue = playing ? "再生中" : "一時停止"
+        stateLabel.textColor = playing
+            ? NSColor(calibratedRed: 0.35, green: 0.85, blue: 0.45, alpha: 0.9)
+            : NSColor(calibratedWhite: 1, alpha: 0.45)
+        currentTimeLabel.stringValue = Self.formatTime(currentTime)
+        // duration 0 はライブ配信や未取得
+        durationLabel.stringValue = duration > 0 ? Self.formatTime(duration) : "--:--"
+    }
+
+    private static func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else {
+            return "--:--"
+        }
+        let total = Int(seconds.rounded())
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+
     @objc private func playTapped() {
         onTogglePlayback?()
     }
@@ -873,7 +954,7 @@ final class VolumePanel: NSPanel {
         configureIconButton(collapseButton, symbol: isCollapsed ? "chevron.up" : "chevron.down", size: 11, action: #selector(toggleCollapsed))
         collapseButton.frame = isCollapsed
             ? NSRect(x: 266, y: 7, width: 20, height: 20)
-            : NSRect(x: 266, y: 114, width: 20, height: 20)
+            : NSRect(x: 266, y: 124, width: 20, height: 20)
         progressBar.frame = isCollapsed
             ? NSRect(x: 16, y: 10, width: 242, height: 14)
             : NSRect(x: 16, y: 14, width: 268, height: 14)
@@ -1522,6 +1603,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let panel = volumePanel ?? VolumePanel(volume: volume)
+        if volumePanel == nil {
+            // ドラッグ移動を検知して位置を永続化する
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(panelMoved(_:)),
+                name: NSWindow.didMoveNotification,
+                object: panel
+            )
+        }
         panel.onChange = { [weak self] volume in
             WallpaperSource.saveVolume(volume)
             self?.applyVolume(volume)
@@ -1543,9 +1633,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.youtubeViews.forEach { $0.setQuality(quality) }
         }
         let f = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: f.minX + 18, y: screen.frame.minY + 1))
+        // visibleFrame は Dock・メニューバーを除いた領域なので、Dock と重ならない
+        var origin = NSPoint(x: f.minX + 18, y: f.minY + 14)
+        if let saved = WallpaperSource.panelOrigin() {
+            // ドラッグで動かした位置を優先(画面外になっていたらデフォルトに戻す)
+            let savedFrame = NSRect(origin: saved, size: panel.frame.size)
+            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(savedFrame) }) {
+                origin = saved
+            }
+        }
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
         volumePanel = panel
+    }
+
+    @objc private func panelMoved(_ notification: Notification) {
+        guard let panel = notification.object as? VolumePanel else {
+            return
+        }
+        WallpaperSource.savePanelOrigin(panel.frame.origin)
     }
 
     private func updateProgressTimer(youtubeEnabled: Bool) {
@@ -1571,7 +1677,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         self?.volumePanel?.setProgress(progress)
                         self?.lastProgress = progress
                     }
-                    self?.lastPlaying = (status["playing"] as? NSNumber)?.boolValue ?? false
+                    let playing = (status["playing"] as? NSNumber)?.boolValue ?? false
+                    self?.lastPlaying = playing
+                    self?.volumePanel?.updateStatus(
+                        playing: playing,
+                        currentTime: (status["currentTime"] as? NSNumber)?.doubleValue ?? 0,
+                        duration: (status["duration"] as? NSNumber)?.doubleValue ?? 0
+                    )
                     // popup が status コマンドで読む実状態(フィット検証用の rect も含む)
                     WallpaperSource.saveState(status)
                 }
