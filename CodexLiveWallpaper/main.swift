@@ -8,14 +8,88 @@ enum WallpaperSource {
     static let volumeURL = FileManager.default
         .homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/volume.txt")
+    static let playlistURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/playlist.txt")
+    static let largestOnlyURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/largest-only.txt")
+
+    static func videoOnLargestScreenOnly() -> Bool {
+        let raw = (try? String(contentsOf: largestOnlyURL, encoding: .utf8)) ?? ""
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+    }
+
+    static func saveVideoOnLargestScreenOnly(_ enabled: Bool) {
+        if enabled {
+            try? FileManager.default.createDirectory(at: largestOnlyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? "1\n".write(to: largestOnlyURL, atomically: true, encoding: .utf8)
+        } else {
+            try? FileManager.default.removeItem(at: largestOnlyURL)
+        }
+    }
+
+    static func sanitizeID(_ raw: String) -> String? {
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return nil
+        }
+        return trimmed
+    }
+
+    static func playlistVideoIDs() -> [String] {
+        guard let raw = try? String(contentsOf: playlistURL, encoding: .utf8) else {
+            return []
+        }
+        return raw.split(whereSeparator: \.isNewline).compactMap { sanitizeID(String($0)) }
+    }
+
+    static func saveYouTubeURL(_ url: String) {
+        try? FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? (url + "\n").write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    static func savePlaylist(_ videoIDs: [String]) {
+        let ids = videoIDs.compactMap(sanitizeID)
+        if ids.isEmpty {
+            try? FileManager.default.removeItem(at: playlistURL)
+            return
+        }
+        try? FileManager.default.createDirectory(at: playlistURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? (ids.joined(separator: "\n") + "\n").write(to: playlistURL, atomically: true, encoding: .utf8)
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: configURL)
+        try? FileManager.default.removeItem(at: playlistURL)
+    }
 
     static func youtubeID() -> String? {
+        guard let url = youtubeURL() else {
+            return nil
+        }
+        return youtubeID(from: url).flatMap(sanitizeID)
+    }
+
+    static func youtubePlaylistID() -> String? {
+        guard let url = youtubeURL() else {
+            return nil
+        }
+        return URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "list" })?
+            .value
+            .flatMap(sanitizeID)
+    }
+
+    private static func youtubeURL() -> URL? {
         let args = ProcessInfo.processInfo.arguments.dropFirst()
         let raw = args.first ?? (try? String(contentsOf: configURL, encoding: .utf8))
         guard let raw, let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             return nil
         }
-        return youtubeID(from: url)
+        return url
     }
 
     static func volume() -> Int {
@@ -56,7 +130,7 @@ enum WallpaperSource {
 }
 
 final class YouTubeView: WKWebView {
-    init(frame: NSRect, videoID: String, volume: Int) {
+    init(frame: NSRect, videoID: String?, playlistID: String?, videoIDs: [String], volume: Int) {
         let config = WKWebViewConfiguration()
         config.allowsAirPlayForMediaPlayback = false
         config.mediaTypesRequiringUserActionForPlayback = []
@@ -65,7 +139,10 @@ final class YouTubeView: WKWebView {
         wantsLayer = true
         customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
         setValue(false, forKey: "drawsBackground")
-        loadHTMLString(Self.html(videoID: videoID, volume: volume), baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        loadHTMLString(
+            Self.html(videoID: videoID, playlistID: playlistID, videoIDs: videoIDs, volume: volume),
+            baseURL: URL(string: "https://www.youtube-nocookie.com")
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -76,8 +153,63 @@ final class YouTubeView: WKWebView {
         evaluateJavaScript("setWallpaperVolume(\(min(100, max(0, volume))))")
     }
 
-    private static func html(videoID: String, volume: Int) -> String {
-        """
+    func togglePlayback() {
+        evaluateJavaScript("toggleWallpaperPlayback()")
+    }
+
+    func previousVideo() {
+        evaluateJavaScript("previousWallpaperVideo()")
+    }
+
+    func nextVideo() {
+        evaluateJavaScript("nextWallpaperVideo()")
+    }
+
+    func seek(to percent: Double) {
+        let bounded = min(1.0, max(0.0, percent))
+        evaluateJavaScript("seekWallpaperVideo(\(bounded))")
+    }
+
+    func setSubtitles(enabled: Bool) {
+        evaluateJavaScript("setWallpaperSubtitles(\(enabled))")
+    }
+
+    func readProgress(_ completion: @escaping (Double?) -> Void) {
+        evaluateJavaScript("wallpaperVideoProgress()") { result, _ in
+            guard let progress = result as? Double else {
+                completion(nil)
+                return
+            }
+            completion(progress)
+        }
+    }
+
+    private static func html(videoID: String?, playlistID: String?, videoIDs: [String], volume: Int) -> String {
+        let explicitIDs = videoIDs.compactMap(WallpaperSource.sanitizeID)
+        let videoIDLine = (videoID ?? explicitIDs.first).map { "                videoId: '\($0)'," } ?? ""
+        let playlistVars = playlistID.map {
+            """
+                  listType: 'playlist',
+                  list: '\($0)',
+            """
+        } ?? ""
+        let playlistLoad: String
+        if explicitIDs.count > 1 {
+            let jsArray = explicitIDs.map { "'\($0)'" }.joined(separator: ", ")
+            playlistLoad = """
+                    event.target.loadPlaylist([\(jsArray)]);
+            """
+        } else {
+            playlistLoad = playlistID.map {
+                """
+                        event.target.loadPlaylist({
+                          listType: 'playlist',
+                          list: '\($0)'
+                        });
+                """
+            } ?? ""
+        }
+        return """
         <!doctype html>
         <html>
         <head>
@@ -109,16 +241,28 @@ final class YouTubeView: WKWebView {
           <script>
             var player;
             var pendingVolume = \(min(100, max(0, volume)));
+            function disableCaptions() {
+              if (!player) return;
+              if (player.setOption) {
+                player.setOption('captions', 'track', {});
+                player.setOption('cc', 'track', {});
+              }
+              if (player.unloadModule) {
+                player.unloadModule('captions');
+              }
+            }
             function onYouTubeIframeAPIReady() {
               player = new YT.Player('player', {
-                videoId: '\(videoID)',
+        \(videoIDLine)
                 host: 'https://www.youtube-nocookie.com',
                 playerVars: {
                   autoplay: 1,
                   mute: 1,
                   controls: 0,
-                  loop: 1,
-                  playlist: '\(videoID)',
+                  cc_load_policy: 0,
+                  iv_load_policy: 3,
+                  cc_lang_pref: '',
+        \(playlistVars)
                   playsinline: 1,
                   modestbranding: 1,
                   rel: 0,
@@ -126,9 +270,17 @@ final class YouTubeView: WKWebView {
                 },
                 events: {
                   onReady: function(event) {
+        \(playlistLoad)
                     event.target.mute();
+                    disableCaptions();
+                    window.setTimeout(disableCaptions, 500);
+                    window.setTimeout(disableCaptions, 1500);
                     event.target.playVideo();
                     setWallpaperVolume(pendingVolume);
+                  },
+                  onStateChange: function() {
+                    disableCaptions();
+                    window.setTimeout(disableCaptions, 500);
                   }
                 }
               });
@@ -144,6 +296,46 @@ final class YouTubeView: WKWebView {
                 player.mute();
               }
             }
+            function toggleWallpaperPlayback() {
+              if (!player || !player.getPlayerState) return;
+              var state = player.getPlayerState();
+              if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) {
+                player.pauseVideo();
+              } else {
+                player.playVideo();
+              }
+            }
+            function previousWallpaperVideo() {
+              if (!player || !player.previousVideo || !player.getPlaylist) return;
+              if (!player.getPlaylist() || player.getPlaylist().length <= 1) return;
+              player.previousVideo();
+            }
+            function nextWallpaperVideo() {
+              if (!player || !player.nextVideo || !player.getPlaylist) return;
+              if (!player.getPlaylist() || player.getPlaylist().length <= 1) return;
+              player.nextVideo();
+            }
+            function seekWallpaperVideo(percent) {
+              if (!player || !player.getDuration || !player.seekTo) return;
+              var duration = player.getDuration();
+              if (!duration || duration <= 0) return;
+              player.seekTo(duration * percent, true);
+              player.playVideo();
+            }
+            function wallpaperVideoProgress() {
+              if (!player || !player.getDuration || !player.getCurrentTime) return 0;
+              var duration = player.getDuration();
+              if (!duration || duration <= 0) return 0;
+              return player.getCurrentTime() / duration;
+            }
+            function setWallpaperSubtitles(enabled) {
+              if (!player) return;
+              if (enabled && player.loadModule) {
+                player.loadModule('captions');
+              } else if (!enabled && player.unloadModule) {
+                player.unloadModule('captions');
+              }
+            }
           </script>
         </body>
         </html>
@@ -151,13 +343,75 @@ final class YouTubeView: WKWebView {
     }
 }
 
+final class ProgressBar: NSView {
+    var onSeek: ((Double) -> Void)?
+    private var progress: Double = 0
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let track = bounds.insetBy(dx: 0, dy: 6)
+        NSColor(calibratedWhite: 1, alpha: 0.18).setFill()
+        NSBezierPath(roundedRect: track, xRadius: 4, yRadius: 4).fill()
+
+        let fill = NSRect(x: track.minX, y: track.minY, width: track.width * progress, height: track.height)
+        NSColor(calibratedRed: 1.0, green: 0.15, blue: 0.12, alpha: 0.95).setFill()
+        NSBezierPath(roundedRect: fill, xRadius: 4, yRadius: 4).fill()
+
+        let knobX = track.minX + track.width * progress
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: NSRect(x: knobX - 5, y: track.midY - 5, width: 10, height: 10)).fill()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        seek(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        seek(with: event)
+    }
+
+    func setProgress(_ progress: Double) {
+        self.progress = min(1, max(0, progress))
+        needsDisplay = true
+    }
+
+    private func seek(with event: NSEvent) {
+        let x = convert(event.locationInWindow, from: nil).x
+        let percent = Double(min(bounds.maxX, max(bounds.minX, x)) / bounds.width)
+        setProgress(percent)
+        onSeek?(percent)
+    }
+}
+
 final class VolumePanel: NSPanel {
     var onChange: ((Int) -> Void)?
+    var onSeek: ((Double) -> Void)?
+    var onTogglePlayback: (() -> Void)?
+    var onPreviousVideo: (() -> Void)?
+    var onNextVideo: (() -> Void)?
+    private let expandedSize = NSSize(width: 292, height: 126)
+    private let collapsedSize = NSSize(width: 292, height: 28)
+    private let root: NSVisualEffectView
     private let valueLabel = NSTextField(labelWithString: "0")
+    private let progressBar = ProgressBar(frame: NSRect(x: 14, y: 8, width: 264, height: 22))
+    private let collapseButton: NSButton
+    private var collapsibleViews: [NSView] = []
+    private var isCollapsed = false
 
     init(volume: Int) {
-        let frame = NSRect(x: 0, y: 0, width: 260, height: 58)
+        let frame = NSRect(origin: .zero, size: expandedSize)
+        root = NSVisualEffectView(frame: frame)
+        collapseButton = NSButton(title: "−", target: nil, action: nil)
         super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        isReleasedWhenClosed = false
         isFloatingPanel = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
@@ -165,38 +419,119 @@ final class VolumePanel: NSPanel {
         isOpaque = false
         hasShadow = true
 
-        let root = NSVisualEffectView(frame: frame)
         root.material = .hudWindow
         root.blendingMode = .behindWindow
         root.state = .active
         root.wantsLayer = true
         root.layer?.cornerRadius = 14
 
-        let title = NSTextField(labelWithString: "YouTube 音量")
-        title.frame = NSRect(x: 14, y: 32, width: 110, height: 18)
+        let title = NSTextField(labelWithString: "YouTube")
+        title.frame = NSRect(x: 14, y: 86, width: 110, height: 18)
         title.textColor = .white
         title.font = .systemFont(ofSize: 12, weight: .medium)
         root.addSubview(title)
+        collapsibleViews.append(title)
 
-        valueLabel.frame = NSRect(x: 216, y: 32, width: 32, height: 18)
+        valueLabel.frame = NSRect(x: 246, y: 86, width: 32, height: 18)
         valueLabel.alignment = .right
         valueLabel.textColor = .white
         valueLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         root.addSubview(valueLabel)
+        collapsibleViews.append(valueLabel)
+
+        configureButton(collapseButton, action: #selector(toggleCollapsed))
+        collapseButton.frame = NSRect(x: 248, y: 58, width: 30, height: 24)
+        root.addSubview(collapseButton)
+
+        let previousButton = makeButton(title: "⏮", action: #selector(previousTapped))
+        previousButton.frame = NSRect(x: 14, y: 58, width: 44, height: 24)
+        root.addSubview(previousButton)
+        collapsibleViews.append(previousButton)
+
+        let playButton = makeButton(title: "⏯", action: #selector(playTapped))
+        playButton.frame = NSRect(x: 64, y: 58, width: 44, height: 24)
+        root.addSubview(playButton)
+        collapsibleViews.append(playButton)
+
+        let nextButton = makeButton(title: "⏭", action: #selector(nextTapped))
+        nextButton.frame = NSRect(x: 114, y: 58, width: 44, height: 24)
+        root.addSubview(nextButton)
+        collapsibleViews.append(nextButton)
 
         let slider = NSSlider(value: Double(volume), minValue: 0, maxValue: 100, target: self, action: #selector(changed(_:)))
-        slider.frame = NSRect(x: 14, y: 10, width: 232, height: 22)
+        slider.frame = NSRect(x: 14, y: 32, width: 264, height: 22)
         slider.isContinuous = true
         root.addSubview(slider)
+        collapsibleViews.append(slider)
+
+        let progressLabel = NSTextField(labelWithString: "Seek")
+        progressLabel.frame = NSRect(x: 14, y: 104, width: 48, height: 16)
+        progressLabel.textColor = .white.withAlphaComponent(0.85)
+        progressLabel.font = .systemFont(ofSize: 10, weight: .medium)
+        root.addSubview(progressLabel)
+        collapsibleViews.append(progressLabel)
+
+        progressBar.onSeek = { [weak self] percent in
+            self?.onSeek?(percent)
+        }
+        root.addSubview(progressBar)
 
         contentView = root
         changed(slider)
+    }
+
+    private func makeButton(title: String, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        configureButton(button, action: action)
+        return button
+    }
+
+    private func configureButton(_ button: NSButton, action: Selector) {
+        button.target = self
+        button.action = action
+        button.bezelStyle = .rounded
+        button.isBordered = true
+        button.font = .systemFont(ofSize: 13, weight: .medium)
     }
 
     @objc private func changed(_ sender: NSSlider) {
         let volume = sender.integerValue
         valueLabel.stringValue = "\(volume)"
         onChange?(volume)
+    }
+
+    func setProgress(_ progress: Double) {
+        progressBar.setProgress(progress)
+    }
+
+    @objc private func playTapped() {
+        onTogglePlayback?()
+    }
+
+    @objc private func previousTapped() {
+        onPreviousVideo?()
+    }
+
+    @objc private func nextTapped() {
+        onNextVideo?()
+    }
+
+    @objc private func toggleCollapsed() {
+        isCollapsed.toggle()
+        collapsibleViews.forEach { $0.isHidden = isCollapsed }
+        collapseButton.title = isCollapsed ? "+" : "−"
+        collapseButton.frame = isCollapsed
+            ? NSRect(x: 250, y: 3, width: 28, height: 22)
+            : NSRect(x: 248, y: 58, width: 30, height: 24)
+        progressBar.frame = isCollapsed
+            ? NSRect(x: 14, y: 5, width: 224, height: 18)
+            : NSRect(x: 14, y: 8, width: 264, height: 22)
+
+        let newSize = isCollapsed ? collapsedSize : expandedSize
+        var frame = frame
+        frame.size = newSize
+        setFrame(frame, display: true, animate: true)
+        root.frame = NSRect(origin: .zero, size: newSize)
     }
 }
 
@@ -354,6 +689,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [NSWindow] = []
     private var youtubeViews: [YouTubeView] = []
     private var volumePanel: VolumePanel?
+    private var progressTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -364,37 +700,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleRemoteCommand(_:)),
+            name: Notification.Name("com.codex.livewallpaper.command"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
+
+    @objc private func handleRemoteCommand(_ notification: Notification) {
+        guard let json = notification.object as? String,
+              let data = json.data(using: .utf8),
+              let command = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let type = command["type"] as? String else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.apply(type: type, command: command)
+        }
+    }
+
+    private func apply(type: String, command: [String: Any]) {
+        switch type {
+        case "play", "reload":
+            // native-host が設定ファイルを書き換えた後に届くので再読み込みだけで良い
+            makeWindows()
+        case "off":
+            makeWindows()
+        case "pause", "toggle":
+            youtubeViews.forEach { $0.togglePlayback() }
+        case "next":
+            youtubeViews.forEach { $0.nextVideo() }
+        case "previous":
+            youtubeViews.forEach { $0.previousVideo() }
+        case "seek":
+            if let percent = (command["percent"] as? NSNumber)?.doubleValue {
+                youtubeViews.forEach { $0.seek(to: percent) }
+            }
+        case "volume":
+            if let value = (command["value"] as? NSNumber)?.intValue {
+                let bounded = min(100, max(0, value))
+                WallpaperSource.saveVolume(bounded)
+                applyVolume(bounded)
+            }
+        case "subtitles":
+            if let enabled = command["enabled"] as? Bool {
+                youtubeViews.forEach { $0.setSubtitles(enabled: enabled) }
+            }
+        case "screens":
+            // native-host が設定ファイルを書き換え済みなので再構成のみ
+            makeWindows()
+        case "quit":
+            NSApp.terminate(nil)
+        default:
+            break
+        }
+    }
+
+    // 音声は 1 画面目の player のみに流す(複数画面で重複再生されるのを防ぐ)
+    private func applyVolume(_ volume: Int) {
+        for (index, view) in youtubeViews.enumerated() {
+            view.setVolume(index == 0 ? volume : 0)
+        }
     }
 
     @objc private func makeWindows() {
         windows.forEach { $0.close() }
         youtubeViews.removeAll()
+        progressTimer?.invalidate()
+        progressTimer = nil
         let youtubeID = WallpaperSource.youtubeID()
+        let playlistID = WallpaperSource.youtubePlaylistID()
+        let videoIDs = WallpaperSource.playlistVideoIDs()
         let volume = WallpaperSource.volume()
-        windows = NSScreen.screens.map { screen in
+        let youtubeEnabled = youtubeID != nil || playlistID != nil || !videoIDs.isEmpty
+        let largestOnly = WallpaperSource.videoOnLargestScreenOnly()
+        let screens = NSScreen.screens
+        let largestScreen = screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+        windows = screens.compactMap { screen in
+            // オプション有効時、小さいモニターにはウィンドウを作らず通常のデスクトップに戻す
+            if youtubeEnabled && largestOnly && screen !== largestScreen {
+                return nil
+            }
+            let localFrame = NSRect(origin: .zero, size: screen.frame.size)
             let window = NSWindow(
-                contentRect: screen.frame,
+                contentRect: localFrame,
                 styleMask: .borderless,
                 backing: .buffered,
                 defer: false,
                 screen: screen
             )
+            // close() と ARC の二重解放によるクラッシュを防ぐ
+            window.isReleasedWhenClosed = false
             window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
             window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
             window.backgroundColor = .black
             window.isOpaque = true
             window.ignoresMouseEvents = true
-            if let youtubeID {
-                let view = YouTubeView(frame: screen.frame, videoID: youtubeID, volume: volume)
+            // contentRect は screen 原点からの相対解釈なので、グローバル座標は明示的に合わせる
+            window.setFrame(screen.frame, display: true)
+            if youtubeEnabled {
+                // 音声は 1 画面目の player のみ。全画面に流すと重複して聞こえる
+                let view = YouTubeView(
+                    frame: localFrame,
+                    videoID: youtubeID,
+                    playlistID: playlistID,
+                    videoIDs: videoIDs,
+                    volume: youtubeViews.isEmpty ? volume : 0
+                )
                 youtubeViews.append(view)
                 window.contentView = view
             } else {
-                window.contentView = WallpaperView(frame: screen.frame)
+                window.contentView = WallpaperView(frame: localFrame)
             }
             window.orderFrontRegardless()
             return window
         }
-        updateVolumePanel(youtubeEnabled: youtubeID != nil, volume: volume)
+        updateVolumePanel(youtubeEnabled: youtubeEnabled, volume: volume)
+        updateProgressTimer(youtubeEnabled: youtubeEnabled)
     }
 
     private func updateVolumePanel(youtubeEnabled: Bool, volume: Int) {
@@ -407,12 +831,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = volumePanel ?? VolumePanel(volume: volume)
         panel.onChange = { [weak self] volume in
             WallpaperSource.saveVolume(volume)
-            self?.youtubeViews.forEach { $0.setVolume(volume) }
+            self?.applyVolume(volume)
+        }
+        panel.onSeek = { [weak self] percent in
+            self?.youtubeViews.forEach { $0.seek(to: percent) }
+        }
+        panel.onTogglePlayback = { [weak self] in
+            self?.youtubeViews.forEach { $0.togglePlayback() }
+        }
+        panel.onPreviousVideo = { [weak self] in
+            self?.youtubeViews.forEach { $0.previousVideo() }
+        }
+        panel.onNextVideo = { [weak self] in
+            self?.youtubeViews.forEach { $0.nextVideo() }
         }
         let f = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: f.maxX - panel.frame.width - 18, y: f.minY + 18))
+        panel.setFrameOrigin(NSPoint(x: f.minX + 18, y: screen.frame.minY + 1))
         panel.orderFrontRegardless()
         volumePanel = panel
+    }
+
+    private func updateProgressTimer(youtubeEnabled: Bool) {
+        guard youtubeEnabled else {
+            return
+        }
+
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, let view = self.youtubeViews.first else {
+                return
+            }
+            view.readProgress { [weak self] progress in
+                guard let progress else {
+                    return
+                }
+                self?.volumePanel?.setProgress(progress)
+            }
+        }
     }
 }
 
