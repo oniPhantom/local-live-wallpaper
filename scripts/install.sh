@@ -27,8 +27,9 @@ if pkill -x CodexLiveWallpaper 2>/dev/null; then
   was_running=1
   sleep 1
 fi
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$repo_root/CodexLiveWallpaper/Info.plist" "$app/Contents/Info.plist"
+cp "$repo_root/CodexLiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
 cp "$build_dir/CodexLiveWallpaper" "$app/Contents/MacOS/CodexLiveWallpaper"
 cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 codesign --force --sign - "$app/Contents/MacOS/native-host" 2>/dev/null || true

@@ -778,7 +778,8 @@ final class VolumePanel: NSPanel {
         root.addSubview(logo)
         collapsibleViews.append(logo)
 
-        let title = NSTextField(labelWithString: "YouTube Wallpaper")
+        // 商標配慮で製品名は "YouTube" を含めない
+        let title = NSTextField(labelWithString: "Codex Live Wallpaper")
         title.frame = NSRect(x: 39, y: 127, width: 140, height: 16)
         title.textColor = NSColor(calibratedWhite: 1, alpha: 0.92)
         title.font = .systemFont(ofSize: 11, weight: .semibold)

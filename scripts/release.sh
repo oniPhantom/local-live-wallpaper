@@ -28,15 +28,19 @@ if [[ -z "$identity" ]]; then
   exit 64
 fi
 
-echo "==> Swift をビルド (release)"
+echo "==> Swift をビルド (release, universal)"
 mkdir -p "$build_dir" "$dist_dir"
-swiftc -O "$repo_root/CodexLiveWallpaper/main.swift" -o "$build_dir/CodexLiveWallpaper"
-swiftc -O "$repo_root/CodexLiveWallpaper/native-host.swift" -o "$build_dir/native-host"
+for src in CodexLiveWallpaper native-host; do
+  swiftc -O -target arm64-apple-macos13.0 "$repo_root/CodexLiveWallpaper/${src/CodexLiveWallpaper/main}.swift" -o "$build_dir/$src-arm64"
+  swiftc -O -target x86_64-apple-macos13.0 "$repo_root/CodexLiveWallpaper/${src/CodexLiveWallpaper/main}.swift" -o "$build_dir/$src-x86_64"
+  lipo -create "$build_dir/$src-arm64" "$build_dir/$src-x86_64" -output "$build_dir/$src"
+done
 
 echo "==> app bundle を構築"
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$repo_root/CodexLiveWallpaper/Info.plist" "$app/Contents/Info.plist"
+cp "$repo_root/CodexLiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
 cp "$build_dir/CodexLiveWallpaper" "$app/Contents/MacOS/CodexLiveWallpaper"
 cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 
