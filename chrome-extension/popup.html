@@ -80,6 +80,15 @@
     <input type="checkbox" id="largest-only">
     <label for="largest-only" style="display:inline;margin:0;color:#f0f0f0;font-size:13px;">小さいモニターは映像を止める</label>
   </div>
+  <label for="quality">画質上限</label>
+  <select id="quality" style="width:100%;background:#2c2e36;color:#f0f0f0;border:none;border-radius:8px;padding:6px;">
+    <option value="hd2160">4K (2160p)</option>
+    <option value="hd1440">1440p</option>
+    <option value="hd1080" selected>1080p</option>
+    <option value="hd720">720p</option>
+    <option value="large">480p</option>
+    <option value="auto">自動(無制限)</option>
+  </select>
   <div id="status"></div>
   <script src="popup.js"></script>
 </body>

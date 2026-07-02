@@ -13,6 +13,8 @@ enum Paths {
     static let playlistURL = supportDir.appendingPathComponent("playlist.txt")
     static let volumeURL = supportDir.appendingPathComponent("volume.txt")
     static let largestOnlyURL = supportDir.appendingPathComponent("largest-only.txt")
+    static let qualityURL = supportDir.appendingPathComponent("quality.txt")
+    static let stateURL = supportDir.appendingPathComponent("state.json")
 }
 
 let bundleIdentifier = "com.codex.livewallpaper"
@@ -110,14 +112,51 @@ func persist(command: [String: Any], type: String) {
         } else {
             try? FileManager.default.removeItem(at: Paths.largestOnlyURL)
         }
+    case "quality":
+        let allowed = ["auto", "small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160"]
+        if let value = command["value"] as? String, allowed.contains(value) {
+            try? (value + "\n").write(to: Paths.qualityURL, atomically: true, encoding: .utf8)
+        }
     default:
         break
     }
 }
 
+// 設定ファイルとアプリが書き出す state.json から現状を組み立てる
+func currentStatus() -> [String: Any] {
+    var status: [String: Any] = [:]
+    if let url = try? String(contentsOf: Paths.configURL, encoding: .utf8) {
+        status["url"] = url.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    if let raw = try? String(contentsOf: Paths.volumeURL, encoding: .utf8),
+       let volume = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+        status["volume"] = min(100, max(0, volume))
+    }
+    if let raw = try? String(contentsOf: Paths.qualityURL, encoding: .utf8) {
+        status["quality"] = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    status["largestOnly"] = FileManager.default.fileExists(atPath: Paths.largestOnlyURL.path)
+    if let data = try? Data(contentsOf: Paths.stateURL),
+       let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+        status["playing"] = state["playing"] ?? false
+        status["progress"] = state["progress"] ?? 0
+    }
+    status["appRunning"] = runningApp() != nil
+    return status
+}
+
 while let command = readMessage() {
     guard let type = command["type"] as? String else {
         writeMessage(["ok": false, "error": "missing type"])
+        continue
+    }
+
+    // status は読み取り専用: アプリへの通知なしで即応答する
+    if type == "status" {
+        var response = currentStatus()
+        response["ok"] = true
+        response["type"] = "status"
+        writeMessage(response)
         continue
     }
 

@@ -36,7 +36,42 @@ function collectPlaylistVideoIDs() {
   return ids;
 }
 
-function collect() {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// playlist は lazy load されるので、スクロールして全件 DOM に載せてから収集する
+async function loadAllPlaylistItems() {
+  const panel = document.querySelector('ytd-playlist-panel-renderer #items');
+  const isPlaylistPage = location.pathname === '/playlist';
+  if (!panel && !isPlaylistPage) {
+    return;
+  }
+  const originalPanelScroll = panel?.scrollTop ?? 0;
+  const originalPageScroll = window.scrollY;
+  let lastCount = -1;
+  for (let i = 0; i < 20; i++) {
+    const count = collectPlaylistVideoIDs().length;
+    if (count === lastCount) {
+      break;
+    }
+    lastCount = count;
+    if (panel) {
+      panel.scrollTop = panel.scrollHeight;
+    }
+    if (isPlaylistPage) {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    }
+    await sleep(400);
+  }
+  if (panel) {
+    panel.scrollTop = originalPanelScroll;
+  }
+  if (isPlaylistPage) {
+    window.scrollTo(0, originalPageScroll);
+  }
+}
+
+async function collect() {
+  await loadAllPlaylistItems();
   const videoIds = collectPlaylistVideoIDs();
   const currentId = extractVideoID(location.href);
   // 現在再生中の動画から始まるよう並べ替える
@@ -91,7 +126,7 @@ function updateButton() {
   });
   button.addEventListener('click', async () => {
     button.textContent = '⏳ 送信中…';
-    const response = await sendCommand(collect());
+    const response = await sendCommand(await collect());
     button.textContent = response.ok ? '✅ 壁紙にしました' : '⚠️ 失敗しました';
     setTimeout(() => {
       button.textContent = '🖥 壁紙にする';
@@ -100,10 +135,11 @@ function updateButton() {
   document.body.appendChild(button);
 }
 
-// popup からの playlist 収集リクエストに応える
+// popup からの playlist 収集リクエストに応える(スクロール収集があるので非同期)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message && message.kind === 'collect-wallpaper-target') {
-    sendResponse(collect());
+    collect().then(sendResponse);
+    return true;
   }
   return false;
 });

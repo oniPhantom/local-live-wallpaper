@@ -79,16 +79,47 @@ subtitlesCheckbox.addEventListener('change', () => {
 const largestOnlyCheckbox = document.getElementById('largest-only');
 largestOnlyCheckbox.addEventListener('change', () => {
   const largestOnly = largestOnlyCheckbox.checked;
-  chrome.storage.local.set({ largestOnly });
   sendAndReport(
     { type: 'screens', largestOnly },
     largestOnly ? '最大モニターのみ表示' : '全モニターに表示'
   );
 });
 
-// 前回の UI 状態を復元(native 側の実際の値とは同期しない簡易版)
-chrome.storage.local.get({ volume: 0, subtitles: false, largestOnly: false }, ({ volume, subtitles, largestOnly }) => {
-  volumeSlider.value = String(volume);
-  subtitlesCheckbox.checked = subtitles;
-  largestOnlyCheckbox.checked = largestOnly;
+const qualitySelect = document.getElementById('quality');
+qualitySelect.addEventListener('change', () => {
+  sendAndReport({ type: 'quality', value: qualitySelect.value }, `画質上限 ${qualitySelect.options[qualitySelect.selectedIndex].text}`);
 });
+
+// native 側の実状態(設定ファイル + state.json)で UI を初期化する。
+// native host に届かない時だけ storage の前回値にフォールバック
+async function syncStatus() {
+  const status = await sendCommand({ type: 'status' });
+  if (!status.ok) {
+    chrome.storage.local.get({ volume: 0, subtitles: false }, ({ volume, subtitles }) => {
+      volumeSlider.value = String(volume);
+      subtitlesCheckbox.checked = subtitles;
+    });
+    showStatus('native host に接続できません');
+    return;
+  }
+  if (typeof status.volume === 'number') {
+    volumeSlider.value = String(status.volume);
+  }
+  largestOnlyCheckbox.checked = Boolean(status.largestOnly);
+  if (status.quality) {
+    qualitySelect.value = status.quality;
+  }
+  if (typeof status.progress === 'number') {
+    document.getElementById('seek').value = String(Math.round(status.progress * 1000));
+  }
+  chrome.storage.local.get({ subtitles: false }, ({ subtitles }) => {
+    subtitlesCheckbox.checked = subtitles;
+  });
+  if (!status.appRunning) {
+    showStatus('壁紙アプリは未起動です');
+  } else if (status.url) {
+    showStatus(`${status.playing ? '再生中' : '停止中'}: ${status.url}`);
+  }
+}
+
+syncStatus();

@@ -1,5 +1,9 @@
 import Cocoa
+import IOKit.ps
 import WebKit
+
+// 壁紙・ログインウィンドウ共通の Safari 相当 UA(WebView 判定によるログイン拒否を避ける)
+let safariUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
 enum WallpaperSource {
     static let configURL = FileManager.default
@@ -14,6 +18,83 @@ enum WallpaperSource {
     static let largestOnlyURL = FileManager.default
         .homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/largest-only.txt")
+    static let qualityURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/quality.txt")
+    static let stateURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/state.json")
+    static let panelHiddenURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/panel-hidden.txt")
+    static let batteryPauseOffURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/battery-pause-off.txt")
+
+    static let allowedQualities = ["small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160"]
+
+    // 画質上限。既定は hd1080、"auto" 指定で無制限(vq は YouTube 側のベストエフォート)
+    static func maxQuality() -> String? {
+        let raw = ((try? String(contentsOf: qualityURL, encoding: .utf8)) ?? "hd1080")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw == "auto" {
+            return nil
+        }
+        return allowedQualities.contains(raw) ? raw : "hd1080"
+    }
+
+    static func saveMaxQuality(_ quality: String) {
+        let value = quality == "auto" || allowedQualities.contains(quality) ? quality : "hd1080"
+        try? FileManager.default.createDirectory(at: qualityURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? (value + "\n").write(to: qualityURL, atomically: true, encoding: .utf8)
+    }
+
+    static func saveState(_ object: [String: Any]) {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object) else {
+            return
+        }
+        try? FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: stateURL, options: .atomic)
+    }
+
+    static func clearState() {
+        try? FileManager.default.removeItem(at: stateURL)
+    }
+
+    static func panelHidden() -> Bool {
+        let raw = (try? String(contentsOf: panelHiddenURL, encoding: .utf8)) ?? ""
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+    }
+
+    static func savePanelHidden(_ hidden: Bool) {
+        if hidden {
+            try? FileManager.default.createDirectory(at: panelHiddenURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? "1\n".write(to: panelHiddenURL, atomically: true, encoding: .utf8)
+        } else {
+            try? FileManager.default.removeItem(at: panelHiddenURL)
+        }
+    }
+
+    static func pauseOnBattery() -> Bool {
+        !FileManager.default.fileExists(atPath: batteryPauseOffURL.path)
+    }
+
+    static let fitModeURL = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/fit-mode.txt")
+
+    // "contain": 動画全体を表示(FullHD は縦幅いっぱい・左右黒帯)/ "cover": 切り抜いて画面を埋める
+    static func fitMode() -> String {
+        let raw = ((try? String(contentsOf: fitModeURL, encoding: .utf8)) ?? "contain")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw == "cover" ? "cover" : "contain"
+    }
+
+    static func saveFitMode(_ mode: String) {
+        try? FileManager.default.createDirectory(at: fitModeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? ((mode == "cover" ? "cover" : "contain") + "\n").write(to: fitModeURL, atomically: true, encoding: .utf8)
+    }
 
     static func videoOnLargestScreenOnly() -> Bool {
         let raw = (try? String(contentsOf: largestOnlyURL, encoding: .utf8)) ?? ""
@@ -97,6 +178,44 @@ enum WallpaperSource {
         return min(100, max(0, Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0))
     }
 
+    // 再生 URL の t= / start= パラメータ("180s" "3m20s" "180" 形式)を秒に変換する
+    static func startSeconds() -> Int? {
+        guard let url = youtubeURL(),
+              let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "t" || $0.name == "start" })?
+                .value else {
+            return nil
+        }
+        return parseTimeParam(raw)
+    }
+
+    static func parseTimeParam(_ raw: String) -> Int? {
+        if let plain = Int(raw) {
+            return plain > 0 ? plain : nil
+        }
+        var total = 0
+        var value = 0
+        for ch in raw {
+            if let digit = ch.wholeNumberValue, (0...9).contains(digit) {
+                value = value * 10 + digit
+            } else if ch == "h" {
+                total += value * 3600
+                value = 0
+            } else if ch == "m" {
+                total += value * 60
+                value = 0
+            } else if ch == "s" {
+                total += value
+                value = 0
+            } else {
+                return nil
+            }
+        }
+        total += value
+        return total > 0 ? total : nil
+    }
+
     static func saveVolume(_ volume: Int) {
         try? FileManager.default.createDirectory(at: volumeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? "\(min(100, max(0, volume)))\n".write(to: volumeURL, atomically: true, encoding: .utf8)
@@ -129,24 +248,57 @@ enum WallpaperSource {
     }
 }
 
-final class YouTubeView: WKWebView {
-    init(frame: NSRect, videoID: String?, playlistID: String?, videoIDs: [String], volume: Int) {
+// userContentController は handler を強参照するため、view 自身を直接渡すと循環参照になる
+final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+
+    init(delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+final class YouTubeView: WKWebView, WKScriptMessageHandler {
+    // event: "playing" | "error" | "stalled", code: YT エラーコード(error 時のみ)
+    var onPlayerEvent: ((String, Int) -> Void)?
+
+    init(frame: NSRect, videoID: String?, playlistID: String?, videoIDs: [String], volume: Int, startSeconds: Int?) {
         let config = WKWebViewConfiguration()
         config.allowsAirPlayForMediaPlayback = false
         config.mediaTypesRequiringUserActionForPlayback = []
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        // 本物の watch ページを開き、CSS/JS を注入して動画だけを全画面表示する。
+        // embed はログイン済みでもエラー 152 で拒否されるため watch 方式を採る
+        let singleLoop = playlistID == nil && videoIDs.count <= 1
+        config.userContentController.addUserScript(WKUserScript(
+            source: Self.controlScript(volume: volume, singleLoop: singleLoop),
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        ))
         super.init(frame: frame, configuration: config)
+        configuration.userContentController.add(WeakScriptMessageHandler(delegate: self), name: "wallpaper")
         wantsLayer = true
-        customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+        customUserAgent = safariUserAgent
         setValue(false, forKey: "drawsBackground")
-        loadHTMLString(
-            Self.html(videoID: videoID, playlistID: playlistID, videoIDs: videoIDs, volume: volume),
-            baseURL: URL(string: "https://www.youtube-nocookie.com")
-        )
+        if let url = Self.watchURL(videoID: videoID, playlistID: playlistID, videoIDs: videoIDs, startSeconds: startSeconds) {
+            load(URLRequest(url: url))
+        }
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let event = body["event"] as? String else {
+            return
+        }
+        let code = (body["code"] as? NSNumber)?.intValue ?? 0
+        onPlayerEvent?(event, code)
     }
 
     func setVolume(_ volume: Int) {
@@ -174,172 +326,322 @@ final class YouTubeView: WKWebView {
         evaluateJavaScript("setWallpaperSubtitles(\(enabled))")
     }
 
-    func readProgress(_ completion: @escaping (Double?) -> Void) {
-        evaluateJavaScript("wallpaperVideoProgress()") { result, _ in
-            guard let progress = result as? Double else {
-                completion(nil)
-                return
-            }
-            completion(progress)
+    func setQuality(_ quality: String) {
+        let value = quality == "auto" || WallpaperSource.allowedQualities.contains(quality) ? quality : "hd1080"
+        evaluateJavaScript("setWallpaperQuality('\(value)')")
+    }
+
+    func pause() {
+        evaluateJavaScript("pauseWallpaperVideo()")
+    }
+
+    func resume() {
+        evaluateJavaScript("resumeWallpaperVideo()")
+    }
+
+    func readStatus(_ completion: @escaping ([String: Any]?) -> Void) {
+        evaluateJavaScript("wallpaperVideoStatus()") { result, _ in
+            completion(result as? [String: Any])
         }
     }
 
-    private static func html(videoID: String?, playlistID: String?, videoIDs: [String], volume: Int) -> String {
-        let explicitIDs = videoIDs.compactMap(WallpaperSource.sanitizeID)
-        let videoIDLine = (videoID ?? explicitIDs.first).map { "                videoId: '\($0)'," } ?? ""
-        let playlistVars = playlistID.map {
-            """
-                  listType: 'playlist',
-                  list: '\($0)',
-            """
-        } ?? ""
-        let playlistLoad: String
-        if explicitIDs.count > 1 {
-            let jsArray = explicitIDs.map { "'\($0)'" }.joined(separator: ", ")
-            playlistLoad = """
-                    event.target.loadPlaylist([\(jsArray)]);
-            """
-        } else {
-            playlistLoad = playlistID.map {
-                """
-                        event.target.loadPlaylist({
-                          listType: 'playlist',
-                          list: '\($0)'
-                        });
-                """
-            } ?? ""
+    private var lastFitRect: [Double] = []
+    private var lastFitMode = ""
+
+    func invalidateFit() {
+        lastFitRect = []
+        lastFitMode = ""
+    }
+
+    // video の実描画 rect(ビューポート座標・top-left 原点)を画面に合わせるよう、
+    // WKWebView のレイヤーを拡大・平行移動する。CSS と違い動画レイヤーごと変形される
+    func applyFit(status: [String: Any]) {
+        guard let rectNumbers = status["rect"] as? [NSNumber], rectNumbers.count == 4 else {
+            return
         }
+        let rect = rectNumbers.map(\.doubleValue)
+        guard rect[2] > 1, rect[3] > 1 else {
+            return
+        }
+        let mode = WallpaperSource.fitMode()
+        if rect == lastFitRect && mode == lastFitMode {
+            return
+        }
+        lastFitRect = rect
+        lastFitMode = mode
+        guard let layer else {
+            return
+        }
+        let width = Double(bounds.width)
+        let height = Double(bounds.height)
+        // contain: 動画全体が収まる倍率(FullHD は縦幅いっぱい)/ cover: 画面を埋める倍率
+        let scale = mode == "cover"
+            ? max(width / rect[2], height / rect[3])
+            : min(width / rect[2], height / rect[3])
+        // レイヤー座標は左下原点なので top-left 基準の rect を変換する
+        let rectBottom = height - rect[1] - rect[3]
+        let tx = (width - rect[2] * scale) / 2 - rect[0] * scale
+        let ty = (height - rect[3] * scale) / 2 - rectBottom * scale
+        layer.anchorPoint = CGPoint(x: 0, y: 0)
+        layer.position = CGPoint(x: 0, y: 0)
+        var transform = CATransform3DMakeTranslation(CGFloat(tx), CGFloat(ty), 0)
+        transform = CATransform3DScale(transform, CGFloat(scale), CGFloat(scale), 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = transform
+        CATransaction.commit()
+    }
+
+    // watch ページの URL を構築する。複数 ID は watch_videos で匿名プレイリスト化
+    private static func watchURL(videoID: String?, playlistID: String?, videoIDs: [String], startSeconds: Int?) -> URL? {
+        let explicitIDs = videoIDs.compactMap(WallpaperSource.sanitizeID)
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.youtube.com"
+        var items: [URLQueryItem] = []
+        if explicitIDs.count > 1 {
+            components.path = "/watch_videos"
+            items.append(URLQueryItem(name: "video_ids", value: explicitIDs.joined(separator: ",")))
+        } else if let videoID = videoID ?? explicitIDs.first {
+            components.path = "/watch"
+            items.append(URLQueryItem(name: "v", value: videoID))
+            if let playlistID {
+                items.append(URLQueryItem(name: "list", value: playlistID))
+            }
+        } else if let playlistID {
+            components.path = "/playlist"
+            items.append(URLQueryItem(name: "list", value: playlistID))
+            items.append(URLQueryItem(name: "playnext", value: "1"))
+        } else {
+            return nil
+        }
+        if let startSeconds, startSeconds > 0 {
+            items.append(URLQueryItem(name: "t", value: "\(startSeconds)s"))
+        }
+        components.queryItems = items
+        return components.url
+    }
+
+    // watch ページに注入する操作 JS。ページ UI を隠して <video> を全画面固定にし、
+    // movie_player (watch ページの player API) と <video> 要素で操作する
+    private static func controlScript(volume: Int, singleLoop: Bool) -> String {
+        let quality = WallpaperSource.maxQuality().map { "'\($0)'" } ?? "null"
         return """
-        <!doctype html>
-        <html>
-        <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          html, body, #player, iframe {
-            background: #000;
-            border: 0;
-            height: 100%;
-            margin: 0;
-            overflow: hidden;
-            padding: 0;
-            width: 100%;
+        (function() {
+          if (window.__wallpaperInstalled) return;
+          window.__wallpaperInstalled = true;
+          var everPlayed = false;
+          var pendingVolume = \(min(100, max(0, volume)));
+          var singleLoop = \(singleLoop);
+          var maxQuality = \(quality);
+          function notifyNative(payload) {
+            try { window.webkit.messageHandlers.wallpaper.postMessage(payload); } catch (e) {}
           }
-          iframe {
-            height: max(100vh, 56.25vw);
-            left: 50%;
-            pointer-events: none;
-            position: fixed;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            width: max(100vw, 177.78vh);
-          }
-        </style>
-        </head>
-        <body>
-          <div id="player"></div>
-          <script src="https://www.youtube.com/iframe_api"></script>
-          <script>
-            var player;
-            var pendingVolume = \(min(100, max(0, volume)));
-            function disableCaptions() {
-              if (!player) return;
-              if (player.setOption) {
-                player.setOption('captions', 'track', {});
-                player.setOption('cc', 'track', {});
-              }
-              if (player.unloadModule) {
-                player.unloadModule('captions');
-              }
-            }
-            function onYouTubeIframeAPIReady() {
-              player = new YT.Player('player', {
-        \(videoIDLine)
-                host: 'https://www.youtube-nocookie.com',
-                playerVars: {
-                  autoplay: 1,
-                  mute: 1,
-                  controls: 0,
-                  cc_load_policy: 0,
-                  iv_load_policy: 3,
-                  cc_lang_pref: '',
-        \(playlistVars)
-                  playsinline: 1,
-                  modestbranding: 1,
-                  rel: 0,
-                  origin: 'https://www.youtube-nocookie.com'
-                },
-                events: {
-                  onReady: function(event) {
-        \(playlistLoad)
-                    event.target.mute();
-                    disableCaptions();
-                    window.setTimeout(disableCaptions, 500);
-                    window.setTimeout(disableCaptions, 1500);
-                    event.target.playVideo();
-                    setWallpaperVolume(pendingVolume);
-                  },
-                  onStateChange: function() {
-                    disableCaptions();
-                    window.setTimeout(disableCaptions, 500);
-                  }
-                }
-              });
-            }
-            function setWallpaperVolume(volume) {
-              pendingVolume = volume;
-              if (!player || !player.setVolume) return;
-              player.setVolume(volume);
+          function moviePlayer() { return document.getElementById('movie_player'); }
+          function videoEl() { return document.querySelector('#movie_player video, video'); }
+
+          // ページ UI は隠して video だけ見せる。サイズ・位置は CSS では触らず、
+          // native 側が video の実描画 rect を読んで WKWebView のレイヤーを変形して合わせる
+          // (CSS で video を広げても WKWebView の動画レイヤーが追従せず崩れるため)
+          var style = document.createElement('style');
+          style.textContent = [
+            'html, body { background: #000 !important; overflow: hidden !important; }',
+            'ytd-app { visibility: hidden !important; }',
+            '#movie_player video { visibility: visible !important; background: #000 !important; }'
+          ].join('\\n');
+          (document.head || document.documentElement).appendChild(style);
+
+          window.setWallpaperVolume = function(volume) {
+            pendingVolume = volume;
+            var p = moviePlayer();
+            var v = videoEl();
+            if (p && p.setVolume) {
+              p.setVolume(volume);
               if (volume > 0) {
-                player.unMute();
-                player.playVideo();
+                if (p.unMute) p.unMute();
+                if (p.playVideo) p.playVideo();
+              } else if (p.mute) {
+                p.mute();
+              }
+            } else if (v) {
+              v.volume = Math.min(1, Math.max(0, volume / 100));
+              v.muted = volume <= 0;
+              if (volume > 0) v.play();
+            }
+          };
+          window.pauseWallpaperVideo = function() {
+            var p = moviePlayer();
+            if (p && p.pauseVideo) { p.pauseVideo(); return; }
+            var v = videoEl();
+            if (v) v.pause();
+          };
+          window.resumeWallpaperVideo = function() {
+            var p = moviePlayer();
+            if (p && p.playVideo) { p.playVideo(); return; }
+            var v = videoEl();
+            if (v) v.play();
+          };
+          window.toggleWallpaperPlayback = function() {
+            var v = videoEl();
+            if (!v) return;
+            if (v.paused || v.ended) {
+              window.resumeWallpaperVideo();
+            } else {
+              window.pauseWallpaperVideo();
+            }
+          };
+          window.previousWallpaperVideo = function() {
+            var p = moviePlayer();
+            if (p && p.previousVideo) p.previousVideo();
+          };
+          window.nextWallpaperVideo = function() {
+            var p = moviePlayer();
+            if (p && p.nextVideo) p.nextVideo();
+          };
+          window.seekWallpaperVideo = function(percent) {
+            var v = videoEl();
+            if (!v || !v.duration) return;
+            v.currentTime = v.duration * Math.min(1, Math.max(0, percent));
+            v.play();
+          };
+          window.setWallpaperSubtitles = function(enabled) {
+            var p = moviePlayer();
+            if (!p) return;
+            if (enabled && p.loadModule) p.loadModule('captions');
+            if (!enabled && p.unloadModule) p.unloadModule('captions');
+          };
+          window.setWallpaperQuality = function(q) {
+            maxQuality = q === 'auto' ? null : q;
+            var p = moviePlayer();
+            if (!p || !p.setPlaybackQualityRange) return;
+            try {
+              if (q === 'auto') {
+                p.setPlaybackQualityRange('auto');
               } else {
-                player.mute();
+                p.setPlaybackQualityRange(q, q);
               }
+            } catch (e) {}
+          };
+          window.wallpaperVideoStatus = function() {
+            var v = videoEl();
+            var status = {progress: 0, playing: false};
+            if (v && v.duration > 0) status.progress = v.currentTime / v.duration;
+            if (v) {
+              status.playing = !v.paused && !v.ended;
+              // フィット検証用: video の実描画位置とビューポートサイズ
+              var r = v.getBoundingClientRect();
+              status.rect = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+              status.viewport = [window.innerWidth, window.innerHeight];
             }
-            function toggleWallpaperPlayback() {
-              if (!player || !player.getPlayerState) return;
-              var state = player.getPlayerState();
-              if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.BUFFERING) {
-                player.pauseVideo();
-              } else {
-                player.playVideo();
+            return status;
+          };
+
+          function watchVideo() {
+            var v = videoEl();
+            if (!v) {
+              window.setTimeout(watchVideo, 500);
+              return;
+            }
+            if (singleLoop) {
+              v.loop = true;
+            }
+            v.addEventListener('playing', function() {
+              if (!everPlayed) {
+                everPlayed = true;
+                notifyNative({event: 'playing', code: 0});
               }
-            }
-            function previousWallpaperVideo() {
-              if (!player || !player.previousVideo || !player.getPlaylist) return;
-              if (!player.getPlaylist() || player.getPlaylist().length <= 1) return;
-              player.previousVideo();
-            }
-            function nextWallpaperVideo() {
-              if (!player || !player.nextVideo || !player.getPlaylist) return;
-              if (!player.getPlaylist() || player.getPlaylist().length <= 1) return;
-              player.nextVideo();
-            }
-            function seekWallpaperVideo(percent) {
-              if (!player || !player.getDuration || !player.seekTo) return;
-              var duration = player.getDuration();
-              if (!duration || duration <= 0) return;
-              player.seekTo(duration * percent, true);
-              player.playVideo();
-            }
-            function wallpaperVideoProgress() {
-              if (!player || !player.getDuration || !player.getCurrentTime) return 0;
-              var duration = player.getDuration();
-              if (!duration || duration <= 0) return 0;
-              return player.getCurrentTime() / duration;
-            }
-            function setWallpaperSubtitles(enabled) {
-              if (!player) return;
-              if (enabled && player.loadModule) {
-                player.loadModule('captions');
-              } else if (!enabled && player.unloadModule) {
-                player.unloadModule('captions');
+              window.setWallpaperVolume(pendingVolume);
+              var p = moviePlayer();
+              if (maxQuality && p && p.setPlaybackQualityRange) {
+                try { p.setPlaybackQualityRange(maxQuality, maxQuality); } catch (e) {}
               }
+            });
+            // watch ページは音アリで自動再生されるので、初期音量を即適用する
+            window.setWallpaperVolume(pendingVolume);
+            v.play();
+          }
+          watchVideo();
+
+          // エラー画面の検出
+          var errorPoll = window.setInterval(function() {
+            if (document.querySelector('.ytp-error')) {
+              window.clearInterval(errorPoll);
+              notifyNative({event: 'error', code: 0});
             }
-          </script>
-        </body>
-        </html>
+          }, 3000);
+
+          // 一定時間再生が始まらなければ失敗として通知
+          window.setTimeout(function() {
+            if (!everPlayed) notifyNative({event: 'stalled', code: 0});
+          }, 45000);
+        })();
         """
+    }
+}
+
+// YouTube ログイン用の通常ウィンドウ。壁紙の WKWebView と同じ既定 data store を
+// 使うため、ここでログインすれば壁紙側も Premium セッションで再生される
+final class LoginWindowController: NSObject, WKUIDelegate {
+    private var window: NSWindow?
+    private var webView: WKWebView?
+    var onClose: (() -> Void)?
+
+    func show() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 520, height: 700), configuration: config)
+        webView.customUserAgent = safariUserAgent
+        webView.uiDelegate = self
+        webView.autoresizingMask = [.width, .height]
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 700),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = "YouTube にログイン(閉じると壁紙に反映)"
+        window.level = .floating
+        window.contentView = webView
+        window.center()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: window
+        )
+        webView.load(URLRequest(url: URL(string: "https://www.youtube.com/")!))
+        window.makeKeyAndOrderFront(nil)
+        self.window = window
+        self.webView = webView
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) {
+        if let window {
+            NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: window)
+        }
+        webView = nil
+        window = nil
+        onClose?()
+    }
+
+    // ログインフローが target=_blank で開こうとするページは同じ webview で開く
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
     }
 }
 
@@ -397,6 +699,18 @@ final class VolumePanel: NSPanel {
     var onTogglePlayback: (() -> Void)?
     var onPreviousVideo: (() -> Void)?
     var onNextVideo: (() -> Void)?
+    var onQualityChange: ((String) -> Void)?
+
+    // 表示名 → vq 値。パネルのポップアップで使う
+    static let qualityOptions: [(title: String, value: String)] = [
+        ("自動", "auto"),
+        ("2160p", "hd2160"),
+        ("1440p", "hd1440"),
+        ("1080p", "hd1080"),
+        ("720p", "hd720"),
+        ("480p", "large"),
+    ]
+    private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let expandedSize = NSSize(width: 292, height: 126)
     private let collapsedSize = NSSize(width: 292, height: 28)
     private let root: NSVisualEffectView
@@ -458,6 +772,19 @@ final class VolumePanel: NSPanel {
         root.addSubview(nextButton)
         collapsibleViews.append(nextButton)
 
+        qualityPopUp.frame = NSRect(x: 162, y: 58, width: 82, height: 24)
+        qualityPopUp.controlSize = .small
+        qualityPopUp.font = .systemFont(ofSize: 11)
+        Self.qualityOptions.forEach { qualityPopUp.addItem(withTitle: $0.title) }
+        let currentQuality = WallpaperSource.maxQuality() ?? "auto"
+        if let index = Self.qualityOptions.firstIndex(where: { $0.value == currentQuality }) {
+            qualityPopUp.selectItem(at: index)
+        }
+        qualityPopUp.target = self
+        qualityPopUp.action = #selector(qualityChanged(_:))
+        root.addSubview(qualityPopUp)
+        collapsibleViews.append(qualityPopUp)
+
         let slider = NSSlider(value: Double(volume), minValue: 0, maxValue: 100, target: self, action: #selector(changed(_:)))
         slider.frame = NSRect(x: 14, y: 32, width: 264, height: 22)
         slider.isContinuous = true
@@ -514,6 +841,14 @@ final class VolumePanel: NSPanel {
 
     @objc private func nextTapped() {
         onNextVideo?()
+    }
+
+    @objc private func qualityChanged(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        guard Self.qualityOptions.indices.contains(index) else {
+            return
+        }
+        onQualityChange?(Self.qualityOptions[index].value)
     }
 
     @objc private func toggleCollapsed() {
@@ -685,19 +1020,45 @@ final class WallpaperView: NSView {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var windows: [NSWindow] = []
     private var youtubeViews: [YouTubeView] = []
     private var volumePanel: VolumePanel?
     private var progressTimer: Timer?
+    private var statusItem: NSStatusItem?
+
+    // 再生失敗時のフォールバック管理
+    private var playbackFailureCount = 0
+    private var fallbackActive = false
+    private var retryTimer: Timer?
+
+    // 自動一時停止(ロック・全面遮蔽・バッテリー駆動)
+    private var autoPauseReasons: Set<String> = []
+    private var autoPaused = false
+    private var batteryTimer: Timer?
+
+    private let loginWindow = LoginWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        makeMainMenu()
+        makeStatusItem()
         makeWindows()
+        loginWindow.onClose = { [weak self] in
+            // ログイン後の cookie で player を作り直す(フォールバック中でも即再挑戦)
+            self?.resetFallback()
+            self?.makeWindows()
+        }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(makeWindows),
             name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(occlusionChanged),
+            name: NSWindow.didChangeOcclusionStateNotification,
             object: nil
         )
         DistributedNotificationCenter.default().addObserver(
@@ -707,6 +1068,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        let lockEvents: [(String, Bool)] = [
+            ("com.apple.screenIsLocked", true),
+            ("com.apple.screenIsUnlocked", false),
+            ("com.apple.screensaver.didstart", true),
+            ("com.apple.screensaver.didstop", false),
+        ]
+        for (name, paused) in lockEvents {
+            DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name(name),
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.setAutoPauseReason("locked", active: paused)
+            }
+        }
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.checkBattery()
+        }
+        checkBattery()
     }
 
     @objc private func handleRemoteCommand(_ notification: Notification) {
@@ -725,8 +1105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch type {
         case "play", "reload":
             // native-host が設定ファイルを書き換えた後に届くので再読み込みだけで良い
+            resetFallback()
             makeWindows()
         case "off":
+            resetFallback()
             makeWindows()
         case "pause", "toggle":
             youtubeViews.forEach { $0.togglePlayback() }
@@ -751,11 +1133,249 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "screens":
             // native-host が設定ファイルを書き換え済みなので再構成のみ
             makeWindows()
+        case "quality":
+            // watch ページはリロード不要で即時反映できる
+            let quality = WallpaperSource.maxQuality() ?? "auto"
+            youtubeViews.forEach { $0.setQuality(quality) }
+        case "login":
+            loginWindow.show()
         case "quit":
             NSApp.terminate(nil)
         default:
             break
         }
+    }
+
+    // MARK: - 再生失敗フォールバック
+
+    private func resetFallback() {
+        playbackFailureCount = 0
+        fallbackActive = false
+        retryTimer?.invalidate()
+        retryTimer = nil
+    }
+
+    private func handlePlayerEvent(_ event: String, code: Int) {
+        switch event {
+        case "playing":
+            playbackFailureCount = 0
+        case "error", "stalled":
+            playbackFailureCount += 1
+            NSLog("wallpaper playback failure #%d (event=%@ code=%d)", playbackFailureCount, event, code)
+            if playbackFailureCount < 2 {
+                // 30 秒おいて 1 回だけ再試行。短間隔で再ロードを繰り返すと
+                // bot 判定をかえって延命させるため控えめにする
+                DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+                    guard let self, !self.fallbackActive else { return }
+                    self.makeWindows()
+                }
+            } else {
+                // アニメ壁紙へ退避し、15 分間隔で自動再挑戦
+                fallbackActive = true
+                makeWindows()
+                retryTimer?.invalidate()
+                retryTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: false) { [weak self] _ in
+                    guard let self else { return }
+                    self.playbackFailureCount = 0
+                    self.fallbackActive = false
+                    self.makeWindows()
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    // MARK: - 自動一時停止
+
+    private func setAutoPauseReason(_ reason: String, active: Bool) {
+        if active {
+            autoPauseReasons.insert(reason)
+        } else {
+            autoPauseReasons.remove(reason)
+        }
+        updateAutoPauseState()
+    }
+
+    private func updateAutoPauseState() {
+        let shouldPause = !autoPauseReasons.isEmpty
+        guard shouldPause != autoPaused else {
+            return
+        }
+        autoPaused = shouldPause
+        if shouldPause {
+            youtubeViews.forEach { $0.pause() }
+        } else {
+            youtubeViews.forEach { $0.resume() }
+        }
+    }
+
+    @objc private func occlusionChanged() {
+        guard !youtubeViews.isEmpty else {
+            return
+        }
+        let anyVisible = windows.contains { $0.occlusionState.contains(.visible) }
+        setAutoPauseReason("occluded", active: !anyVisible)
+    }
+
+    private func checkBattery() {
+        guard WallpaperSource.pauseOnBattery() else {
+            setAutoPauseReason("battery", active: false)
+            return
+        }
+        let onBattery = (IOPSGetProvidingPowerSourceType(nil)?.takeRetainedValue() as String?) == kIOPMBatteryPowerKey
+        setAutoPauseReason("battery", active: onBattery)
+    }
+
+    // MARK: - メニューバー
+
+    // メニューを持たない accessory アプリでは Cmd+C/V などのキーイコライザが効かないため、
+    // ログインウィンドウでのコピー & ペースト用に Edit メニューを持つ main menu を設定する
+    private func makeMainMenu() {
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "CodexLiveWallpaper を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "編集")
+        editMenu.addItem(withTitle: "取り消す", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "やり直す", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "カット", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "コピー", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "ペースト", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "すべてを選択", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func makeStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "play.tv", accessibilityDescription: "Codex Live Wallpaper")
+        }
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
+        statusItem = item
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let hasVideo = !youtubeViews.isEmpty
+
+        let toggle = NSMenuItem(title: "再生 / 一時停止", action: #selector(menuToggle), keyEquivalent: "")
+        toggle.target = self
+        toggle.isEnabled = hasVideo
+        menu.addItem(toggle)
+
+        let previous = NSMenuItem(title: "前の動画", action: #selector(menuPrevious), keyEquivalent: "")
+        previous.target = self
+        previous.isEnabled = hasVideo
+        menu.addItem(previous)
+
+        let next = NSMenuItem(title: "次の動画", action: #selector(menuNext), keyEquivalent: "")
+        next.target = self
+        next.isEnabled = hasVideo
+        menu.addItem(next)
+
+        menu.addItem(.separator())
+
+        let panel = NSMenuItem(title: "操作パネルを表示", action: #selector(menuTogglePanel), keyEquivalent: "")
+        panel.target = self
+        panel.state = WallpaperSource.panelHidden() ? .off : .on
+        menu.addItem(panel)
+
+        let largest = NSMenuItem(title: "最大モニターのみ表示", action: #selector(menuToggleLargestOnly), keyEquivalent: "")
+        largest.target = self
+        largest.state = WallpaperSource.videoOnLargestScreenOnly() ? .on : .off
+        menu.addItem(largest)
+
+        let cover = NSMenuItem(title: "切り抜いて画面を埋める", action: #selector(menuToggleFitMode), keyEquivalent: "")
+        cover.target = self
+        cover.state = WallpaperSource.fitMode() == "cover" ? .on : .off
+        menu.addItem(cover)
+
+        menu.addItem(.separator())
+
+        let login = NSMenuItem(title: "YouTube にログイン…", action: #selector(menuLogin), keyEquivalent: "")
+        login.target = self
+        menu.addItem(login)
+
+        let logout = NSMenuItem(title: "ログイン情報を消去", action: #selector(menuClearWebData), keyEquivalent: "")
+        logout.target = self
+        menu.addItem(logout)
+
+        menu.addItem(.separator())
+
+        let off = NSMenuItem(title: "壁紙を止める", action: #selector(menuOff), keyEquivalent: "")
+        off.target = self
+        off.isEnabled = hasVideo
+        menu.addItem(off)
+
+        let quit = NSMenuItem(title: "終了", action: #selector(menuQuit), keyEquivalent: "")
+        quit.target = self
+        menu.addItem(quit)
+    }
+
+    @objc private func menuToggle() {
+        youtubeViews.forEach { $0.togglePlayback() }
+    }
+
+    @objc private func menuPrevious() {
+        youtubeViews.forEach { $0.previousVideo() }
+    }
+
+    @objc private func menuNext() {
+        youtubeViews.forEach { $0.nextVideo() }
+    }
+
+    @objc private func menuTogglePanel() {
+        WallpaperSource.savePanelHidden(!WallpaperSource.panelHidden())
+        makeWindows()
+    }
+
+    @objc private func menuToggleLargestOnly() {
+        WallpaperSource.saveVideoOnLargestScreenOnly(!WallpaperSource.videoOnLargestScreenOnly())
+        makeWindows()
+    }
+
+    @objc private func menuToggleFitMode() {
+        WallpaperSource.saveFitMode(WallpaperSource.fitMode() == "cover" ? "contain" : "cover")
+        // 次の status 読み取りで新モードのフィットが適用される
+        youtubeViews.forEach { $0.invalidateFit() }
+    }
+
+    @objc private func menuLogin() {
+        loginWindow.show()
+    }
+
+    // cookie 等を全消去する。bot 判定が固着した時のリセットにも使える
+    @objc private func menuClearWebData() {
+        let store = WKWebsiteDataStore.default()
+        store.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: Date(timeIntervalSince1970: 0)
+        ) { [weak self] in
+            self?.resetFallback()
+            self?.makeWindows()
+        }
+    }
+
+    @objc private func menuOff() {
+        WallpaperSource.clear()
+        resetFallback()
+        makeWindows()
+    }
+
+    @objc private func menuQuit() {
+        NSApp.terminate(nil)
     }
 
     // 音声は 1 画面目の player のみに流す(複数画面で重複再生されるのを防ぐ)
@@ -774,7 +1394,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let playlistID = WallpaperSource.youtubePlaylistID()
         let videoIDs = WallpaperSource.playlistVideoIDs()
         let volume = WallpaperSource.volume()
-        let youtubeEnabled = youtubeID != nil || playlistID != nil || !videoIDs.isEmpty
+        // フォールバック中は設定を残したままアニメ壁紙を表示する
+        let youtubeEnabled = (youtubeID != nil || playlistID != nil || !videoIDs.isEmpty) && !fallbackActive
         let largestOnly = WallpaperSource.videoOnLargestScreenOnly()
         let screens = NSScreen.screens
         let largestScreen = screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
@@ -807,8 +1428,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     videoID: youtubeID,
                     playlistID: playlistID,
                     videoIDs: videoIDs,
-                    volume: youtubeViews.isEmpty ? volume : 0
+                    volume: youtubeViews.isEmpty ? volume : 0,
+                    startSeconds: WallpaperSource.startSeconds()
                 )
+                // 再生イベントは音声担当の 1 画面目のみ監視(全画面分監視すると多重カウントになる)
+                if youtubeViews.isEmpty {
+                    view.onPlayerEvent = { [weak self] event, code in
+                        DispatchQueue.main.async {
+                            self?.handlePlayerEvent(event, code: code)
+                        }
+                    }
+                }
                 youtubeViews.append(view)
                 window.contentView = view
             } else {
@@ -819,10 +1449,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateVolumePanel(youtubeEnabled: youtubeEnabled, volume: volume)
         updateProgressTimer(youtubeEnabled: youtubeEnabled)
+        if !youtubeEnabled {
+            WallpaperSource.clearState()
+        }
+        // 再構成後に自動一時停止の状態を再適用する
+        autoPaused = false
+        occlusionChanged()
+        updateAutoPauseState()
     }
 
     private func updateVolumePanel(youtubeEnabled: Bool, volume: Int) {
-        guard youtubeEnabled, let screen = NSScreen.main else {
+        guard youtubeEnabled, !WallpaperSource.panelHidden(), let screen = NSScreen.main else {
             volumePanel?.close()
             volumePanel = nil
             return
@@ -845,6 +1482,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.onNextVideo = { [weak self] in
             self?.youtubeViews.forEach { $0.nextVideo() }
         }
+        panel.onQualityChange = { [weak self] quality in
+            WallpaperSource.saveMaxQuality(quality)
+            self?.youtubeViews.forEach { $0.setQuality(quality) }
+        }
         let f = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: f.minX + 18, y: screen.frame.minY + 1))
         panel.orderFrontRegardless()
@@ -857,14 +1498,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         progressTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let view = self.youtubeViews.first else {
+            guard let self else {
                 return
             }
-            view.readProgress { [weak self] progress in
-                guard let progress else {
-                    return
+            for (index, view) in self.youtubeViews.enumerated() {
+                view.readStatus { [weak self, weak view] status in
+                    guard let status else {
+                        return
+                    }
+                    // video の実描画位置に合わせてレイヤー変形で全画面フィットさせる
+                    view?.applyFit(status: status)
+                    guard index == 0 else {
+                        return
+                    }
+                    if let progress = (status["progress"] as? NSNumber)?.doubleValue {
+                        self?.volumePanel?.setProgress(progress)
+                    }
+                    // popup が status コマンドで読む実状態(フィット検証用の rect も含む)
+                    WallpaperSource.saveState(status)
                 }
-                self?.volumePanel?.setProgress(progress)
             }
         }
     }

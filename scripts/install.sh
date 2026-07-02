@@ -3,8 +3,8 @@ set -euo pipefail
 
 # CodexLiveWallpaper.app と Native Messaging host をビルド・インストールする。
 # usage:
-#   ./scripts/install.sh                # アプリのビルド・インストールのみ
-#   ./scripts/install.sh <EXTENSION_ID> # Chrome 拡張の ID を指定して host manifest も設置
+#   ./scripts/install.sh                # 固定 ID で host manifest も設置
+#   ./scripts/install.sh <EXTENSION_ID> # ID を上書きしたい場合のみ指定
 
 repo_root="${0:A:h:h}"
 app="/Applications/CodexLiveWallpaper.app"
@@ -12,7 +12,9 @@ build_dir="$repo_root/build"
 host_name="com.codex.livewallpaper"
 nm_dir="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
 
-extension_id="${1:-}"
+# manifest.json の "key" から導出される固定 ID(フォルダを移動しても変わらない)
+default_extension_id="gapcbmiahdgeennnieipbddmhpmnhhgg"
+extension_id="${1:-$default_extension_id}"
 
 echo "==> Swift をビルド"
 mkdir -p "$build_dir"
@@ -37,10 +39,9 @@ if [[ $was_running -eq 1 ]]; then
   open -a "$app"
 fi
 
-if [[ -n "$extension_id" ]]; then
-  echo "==> Native Messaging host manifest を設置"
-  mkdir -p "$nm_dir"
-  cat > "$nm_dir/$host_name.json" <<EOF
+echo "==> Native Messaging host manifest を設置 (extension: $extension_id)"
+mkdir -p "$nm_dir"
+cat > "$nm_dir/$host_name.json" <<EOF
 {
   "name": "$host_name",
   "description": "Codex Live Wallpaper bridge",
@@ -49,16 +50,6 @@ if [[ -n "$extension_id" ]]; then
   "allowed_origins": ["chrome-extension://$extension_id/"]
 }
 EOF
-  echo "    $nm_dir/$host_name.json"
-else
-  cat <<'EOS'
-
-NOTE: Chrome 拡張の ID が未指定なので host manifest は設置していません。
-  1. chrome://extensions を開き「パッケージ化されていない拡張機能を読み込む」で
-     chrome-extension/ ディレクトリを読み込む
-  2. 表示された ID をコピーして再実行:
-     ./scripts/install.sh <EXTENSION_ID>
-EOS
-fi
+echo "    $nm_dir/$host_name.json"
 
 echo "==> 完了"
