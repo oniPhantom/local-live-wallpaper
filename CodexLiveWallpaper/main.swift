@@ -451,6 +451,7 @@ final class YouTubeView: WKWebView, WKScriptMessageHandler {
           ].join('\\n');
           (document.head || document.documentElement).appendChild(style);
 
+          // 音量変更は再生状態に影響させない(playVideo を呼ぶと一時停止中でも勝手に再生される)
           window.setWallpaperVolume = function(volume) {
             pendingVolume = volume;
             var p = moviePlayer();
@@ -459,14 +460,12 @@ final class YouTubeView: WKWebView, WKScriptMessageHandler {
               p.setVolume(volume);
               if (volume > 0) {
                 if (p.unMute) p.unMute();
-                if (p.playVideo) p.playVideo();
               } else if (p.mute) {
                 p.mute();
               }
             } else if (v) {
               v.volume = Math.min(1, Math.max(0, volume / 100));
               v.muted = volume <= 0;
-              if (volume > 0) v.play();
             }
           };
           window.pauseWallpaperVideo = function() {
@@ -498,11 +497,11 @@ final class YouTubeView: WKWebView, WKScriptMessageHandler {
             var p = moviePlayer();
             if (p && p.nextVideo) p.nextVideo();
           };
+          // シークも再生状態は維持する(一時停止中なら止まったまま位置だけ動かす)
           window.seekWallpaperVideo = function(percent) {
             var v = videoEl();
             if (!v || !v.duration) return;
             v.currentTime = v.duration * Math.min(1, Math.max(0, percent));
-            v.play();
           };
           window.setWallpaperSubtitles = function(enabled) {
             var p = moviePlayer();
@@ -710,20 +709,20 @@ final class VolumePanel: NSPanel {
         ("720p", "hd720"),
         ("480p", "large"),
     ]
-    private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let expandedSize = NSSize(width: 292, height: 126)
-    private let collapsedSize = NSSize(width: 292, height: 28)
+
+    private let expandedSize = NSSize(width: 300, height: 148)
+    private let collapsedSize = NSSize(width: 300, height: 34)
     private let root: NSVisualEffectView
     private let valueLabel = NSTextField(labelWithString: "0")
-    private let progressBar = ProgressBar(frame: NSRect(x: 14, y: 8, width: 264, height: 22))
-    private let collapseButton: NSButton
+    private let progressBar = ProgressBar(frame: NSRect(x: 16, y: 14, width: 268, height: 14))
+    private let collapseButton = NSButton(frame: .zero)
+    private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private var collapsibleViews: [NSView] = []
     private var isCollapsed = false
 
     init(volume: Int) {
         let frame = NSRect(origin: .zero, size: expandedSize)
         root = NSVisualEffectView(frame: frame)
-        collapseButton = NSButton(title: "−", target: nil, action: nil)
         super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         isFloatingPanel = true
@@ -737,44 +736,28 @@ final class VolumePanel: NSPanel {
         root.blendingMode = .behindWindow
         root.state = .active
         root.wantsLayer = true
-        root.layer?.cornerRadius = 14
+        root.layer?.cornerRadius = 16
+        root.layer?.borderWidth = 1
+        root.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
 
-        let title = NSTextField(labelWithString: "YouTube")
-        title.frame = NSRect(x: 14, y: 86, width: 110, height: 18)
-        title.textColor = .white
-        title.font = .systemFont(ofSize: 12, weight: .medium)
+        // ヘッダー: ロゴ + タイトル / 画質 / 折りたたみ
+        let logo = NSImageView(frame: NSRect(x: 16, y: 116, width: 18, height: 18))
+        logo.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
+        logo.contentTintColor = NSColor(calibratedRed: 1.0, green: 0.18, blue: 0.13, alpha: 1)
+        root.addSubview(logo)
+        collapsibleViews.append(logo)
+
+        let title = NSTextField(labelWithString: "YouTube Wallpaper")
+        title.frame = NSRect(x: 39, y: 117, width: 140, height: 16)
+        title.textColor = NSColor(calibratedWhite: 1, alpha: 0.92)
+        title.font = .systemFont(ofSize: 11, weight: .semibold)
         root.addSubview(title)
         collapsibleViews.append(title)
 
-        valueLabel.frame = NSRect(x: 246, y: 86, width: 32, height: 18)
-        valueLabel.alignment = .right
-        valueLabel.textColor = .white
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-        root.addSubview(valueLabel)
-        collapsibleViews.append(valueLabel)
-
-        configureButton(collapseButton, action: #selector(toggleCollapsed))
-        collapseButton.frame = NSRect(x: 248, y: 58, width: 30, height: 24)
-        root.addSubview(collapseButton)
-
-        let previousButton = makeButton(title: "⏮", action: #selector(previousTapped))
-        previousButton.frame = NSRect(x: 14, y: 58, width: 44, height: 24)
-        root.addSubview(previousButton)
-        collapsibleViews.append(previousButton)
-
-        let playButton = makeButton(title: "⏯", action: #selector(playTapped))
-        playButton.frame = NSRect(x: 64, y: 58, width: 44, height: 24)
-        root.addSubview(playButton)
-        collapsibleViews.append(playButton)
-
-        let nextButton = makeButton(title: "⏭", action: #selector(nextTapped))
-        nextButton.frame = NSRect(x: 114, y: 58, width: 44, height: 24)
-        root.addSubview(nextButton)
-        collapsibleViews.append(nextButton)
-
-        qualityPopUp.frame = NSRect(x: 162, y: 58, width: 82, height: 24)
+        qualityPopUp.frame = NSRect(x: 184, y: 113, width: 80, height: 22)
         qualityPopUp.controlSize = .small
-        qualityPopUp.font = .systemFont(ofSize: 11)
+        qualityPopUp.font = .systemFont(ofSize: 10, weight: .medium)
         Self.qualityOptions.forEach { qualityPopUp.addItem(withTitle: $0.title) }
         let currentQuality = WallpaperSource.maxQuality() ?? "auto"
         if let index = Self.qualityOptions.firstIndex(where: { $0.value == currentQuality }) {
@@ -785,19 +768,49 @@ final class VolumePanel: NSPanel {
         root.addSubview(qualityPopUp)
         collapsibleViews.append(qualityPopUp)
 
+        configureIconButton(collapseButton, symbol: "chevron.down", size: 11, action: #selector(toggleCollapsed))
+        collapseButton.frame = NSRect(x: 266, y: 114, width: 20, height: 20)
+        root.addSubview(collapseButton)
+
+        // トランスポート(中央寄せ)
+        let previousButton = makeIconButton(symbol: "backward.fill", size: 15, action: #selector(previousTapped))
+        previousButton.frame = NSRect(x: 92, y: 66, width: 36, height: 30)
+        root.addSubview(previousButton)
+        collapsibleViews.append(previousButton)
+
+        let playButton = makeIconButton(symbol: "playpause.fill", size: 19, action: #selector(playTapped))
+        playButton.frame = NSRect(x: 132, y: 64, width: 36, height: 34)
+        root.addSubview(playButton)
+        collapsibleViews.append(playButton)
+
+        let nextButton = makeIconButton(symbol: "forward.fill", size: 15, action: #selector(nextTapped))
+        nextButton.frame = NSRect(x: 172, y: 66, width: 36, height: 30)
+        root.addSubview(nextButton)
+        collapsibleViews.append(nextButton)
+
+        // 音量
+        let speaker = NSImageView(frame: NSRect(x: 16, y: 40, width: 16, height: 16))
+        speaker.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
+        speaker.contentTintColor = NSColor(calibratedWhite: 1, alpha: 0.6)
+        root.addSubview(speaker)
+        collapsibleViews.append(speaker)
+
         let slider = NSSlider(value: Double(volume), minValue: 0, maxValue: 100, target: self, action: #selector(changed(_:)))
-        slider.frame = NSRect(x: 14, y: 32, width: 264, height: 22)
+        slider.frame = NSRect(x: 38, y: 38, width: 206, height: 20)
+        slider.controlSize = .small
         slider.isContinuous = true
         root.addSubview(slider)
         collapsibleViews.append(slider)
 
-        let progressLabel = NSTextField(labelWithString: "Seek")
-        progressLabel.frame = NSRect(x: 14, y: 104, width: 48, height: 16)
-        progressLabel.textColor = .white.withAlphaComponent(0.85)
-        progressLabel.font = .systemFont(ofSize: 10, weight: .medium)
-        root.addSubview(progressLabel)
-        collapsibleViews.append(progressLabel)
+        valueLabel.frame = NSRect(x: 250, y: 40, width: 34, height: 16)
+        valueLabel.alignment = .right
+        valueLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.6)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        root.addSubview(valueLabel)
+        collapsibleViews.append(valueLabel)
 
+        // シーク
         progressBar.onSeek = { [weak self] percent in
             self?.onSeek?(percent)
         }
@@ -807,18 +820,21 @@ final class VolumePanel: NSPanel {
         changed(slider)
     }
 
-    private func makeButton(title: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        configureButton(button, action: action)
+    private func makeIconButton(symbol: String, size: CGFloat, action: Selector) -> NSButton {
+        let button = NSButton(frame: .zero)
+        configureIconButton(button, symbol: symbol, size: size, action: action)
         return button
     }
 
-    private func configureButton(_ button: NSButton, action: Selector) {
+    private func configureIconButton(_ button: NSButton, symbol: String, size: CGFloat, action: Selector) {
         button.target = self
         button.action = action
-        button.bezelStyle = .rounded
-        button.isBordered = true
-        button.font = .systemFont(ofSize: 13, weight: .medium)
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.imagePosition = .imageOnly
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: size, weight: .semibold))
+        button.contentTintColor = NSColor(calibratedWhite: 1, alpha: 0.85)
     }
 
     @objc private func changed(_ sender: NSSlider) {
@@ -854,13 +870,13 @@ final class VolumePanel: NSPanel {
     @objc private func toggleCollapsed() {
         isCollapsed.toggle()
         collapsibleViews.forEach { $0.isHidden = isCollapsed }
-        collapseButton.title = isCollapsed ? "+" : "−"
+        configureIconButton(collapseButton, symbol: isCollapsed ? "chevron.up" : "chevron.down", size: 11, action: #selector(toggleCollapsed))
         collapseButton.frame = isCollapsed
-            ? NSRect(x: 250, y: 3, width: 28, height: 22)
-            : NSRect(x: 248, y: 58, width: 30, height: 24)
+            ? NSRect(x: 266, y: 7, width: 20, height: 20)
+            : NSRect(x: 266, y: 114, width: 20, height: 20)
         progressBar.frame = isCollapsed
-            ? NSRect(x: 14, y: 5, width: 224, height: 18)
-            : NSRect(x: 14, y: 8, width: 264, height: 22)
+            ? NSRect(x: 16, y: 10, width: 242, height: 14)
+            : NSRect(x: 16, y: 14, width: 268, height: 14)
 
         let newSize = isCollapsed ? collapsedSize : expandedSize
         var frame = frame
@@ -1037,6 +1053,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var autoPaused = false
     private var batteryTimer: Timer?
 
+    // ユーザーが明示的に一時停止したか(自動復帰や再構築で勝手に再生しないため)
+    private var userPaused = false
+    private var lastPlaying = false
+    private var lastProgress: Double = 0
+    // ディスプレイ構成変更などの再構築後に復元する再生位置と再生状態
+    private var pendingRestore: (progress: Double, resume: Bool)?
+
     private let loginWindow = LoginWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -1106,12 +1129,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "play", "reload":
             // native-host が設定ファイルを書き換えた後に届くので再読み込みだけで良い
             resetFallback()
-            makeWindows()
+            rebuildWindows(fresh: true)
         case "off":
             resetFallback()
-            makeWindows()
+            rebuildWindows(fresh: true)
         case "pause", "toggle":
-            youtubeViews.forEach { $0.togglePlayback() }
+            togglePlaybackTracked()
         case "next":
             youtubeViews.forEach { $0.nextVideo() }
         case "previous":
@@ -1159,6 +1182,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch event {
         case "playing":
             playbackFailureCount = 0
+            // 再構築後の復元: 再生位置を戻し、一時停止中だった場合は止め直す
+            if let restore = pendingRestore {
+                pendingRestore = nil
+                if restore.progress > 0.005 && restore.progress < 0.995 {
+                    youtubeViews.forEach { $0.seek(to: restore.progress) }
+                }
+                if !restore.resume {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                        self?.youtubeViews.forEach { $0.pause() }
+                    }
+                }
+            }
         case "error", "stalled":
             playbackFailureCount += 1
             NSLog("wallpaper playback failure #%d (event=%@ code=%d)", playbackFailureCount, event, code)
@@ -1205,9 +1240,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoPaused = shouldPause
         if shouldPause {
             youtubeViews.forEach { $0.pause() }
-        } else {
+        } else if !userPaused {
+            // ユーザーが止めていた場合はワークスペース切替などで勝手に再生しない
             youtubeViews.forEach { $0.resume() }
         }
+    }
+
+    // 再生/一時停止トグル。直前の実再生状態からユーザーの意図(止めたい/再生したい)を記録する
+    private func togglePlaybackTracked() {
+        userPaused = lastPlaying
+        youtubeViews.forEach { $0.togglePlayback() }
     }
 
     @objc private func occlusionChanged() {
@@ -1325,7 +1367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func menuToggle() {
-        youtubeViews.forEach { $0.togglePlayback() }
+        togglePlaybackTracked()
     }
 
     @objc private func menuPrevious() {
@@ -1371,7 +1413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func menuOff() {
         WallpaperSource.clear()
         resetFallback()
-        makeWindows()
+        rebuildWindows(fresh: true)
     }
 
     @objc private func menuQuit() {
@@ -1386,6 +1428,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func makeWindows() {
+        rebuildWindows(fresh: false)
+    }
+
+    private func rebuildWindows(fresh: Bool) {
+        if fresh {
+            // 新しい動画の再生開始: 復元情報と一時停止状態はリセット
+            pendingRestore = nil
+            userPaused = false
+            lastPlaying = false
+            lastProgress = 0
+        } else if !youtubeViews.isEmpty {
+            // ディスプレイ構成変更などの再構築: 位置と停止状態を引き継ぐ
+            pendingRestore = (lastProgress, !userPaused)
+        }
         windows.forEach { $0.close() }
         youtubeViews.removeAll()
         progressTimer?.invalidate()
@@ -1474,7 +1530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.youtubeViews.forEach { $0.seek(to: percent) }
         }
         panel.onTogglePlayback = { [weak self] in
-            self?.youtubeViews.forEach { $0.togglePlayback() }
+            self?.togglePlaybackTracked()
         }
         panel.onPreviousVideo = { [weak self] in
             self?.youtubeViews.forEach { $0.previousVideo() }
@@ -1513,7 +1569,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                     if let progress = (status["progress"] as? NSNumber)?.doubleValue {
                         self?.volumePanel?.setProgress(progress)
+                        self?.lastProgress = progress
                     }
+                    self?.lastPlaying = (status["playing"] as? NSNumber)?.boolValue ?? false
                     // popup が status コマンドで読む実状態(フィット検証用の rect も含む)
                     WallpaperSource.saveState(status)
                 }
