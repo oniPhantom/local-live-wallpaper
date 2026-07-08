@@ -5,9 +5,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>com.codex.livewallpaper</string>
 	<key>CFBundleName</key>
-	<string>CodexLiveWallpaper</string>
+	<string>LiveWallpaper</string>
 	<key>CFBundleExecutable</key>
-	<string>CodexLiveWallpaper</string>
+	<string>LiveWallpaper</string>
+	<key>CFBundleDisplayName</key>
+	<string>Live Wallpaper</string>
 	<key>CFBundleIconFile</key>
 	<string>icon</string>
 	<key>CFBundlePackageType</key>
@@ -18,8 +20,6 @@
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

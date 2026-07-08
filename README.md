@@ -1,11 +1,11 @@
-# Codex Live Wallpaper
+# Live Wallpaper
 
 YouTube の動画・プレイリストを macOS のデスクトップ壁紙として再生するツールです。
 Chrome 拡張の「壁紙にする」ボタン、メニューバー、デスクトップ上の操作パネルから操作できます。
 
 - 🖥 YouTube watch ページをそのまま再生(Premium ログインで広告なし)
 - 🖱 Chrome の YouTube ページからワンクリックで壁紙化(playlist 対応)
-- 🎛 操作パネル: 再生/一時停止・前後スキップ・音量・シーク・画質・時間表示(ドラッグで移動可)
+- 🎛 操作パネル: URL直接再生・ログイン中アカウントの再生リスト選択・ログイン・再生/一時停止・前後スキップ・音量・シーク・画質・通常壁紙に戻す・時間表示(ドラッグで移動可)
 - 🔋 画面ロック / 全面が隠れている間 / バッテリー駆動時は自動一時停止
 - 🛟 再生に失敗したら内蔵アニメ壁紙へ自動退避し、定期的に自動リトライ
 
@@ -54,7 +54,7 @@ YouTube にログインする(推奨・広告なしになる):
   またはツールバーの拡張アイコンの popup
 - **メニューバー**: 再生操作、パネル表示切替、モニター設定、表示モード、ログイン
 - **操作パネル**(デスクトップ左下、ドラッグで移動可): 再生/一時停止・前後・
-  音量・シーク・画質・現在時間/合計時間
+  URL直接入力・ログイン中アカウントの再生リスト選択・ログイン・音量・シーク・画質・現在時間/合計時間・通常壁紙に戻す
 - **CLI**:
 
 ```bash
@@ -82,7 +82,7 @@ Chrome 拡張は chrome://extensions から手動で削除してください。
 
 ## コマンド仕様(Native Messaging)
 
-拡張以外からも `/Applications/CodexLiveWallpaper.app/Contents/MacOS/native-host` に
+拡張以外からも `/Applications/LiveWallpaper.app/Contents/MacOS/native-host` に
 4byte 長プレフィックス付き JSON を送ることで操作できます。
 
 ```jsonc
@@ -106,7 +106,7 @@ Chrome 拡張は chrome://extensions から手動で削除してください。
   watch ページを表示し、CSS/JS 注入でページ UI を隠して動画だけを見せる
 - 動画の実描画位置を毎秒読み取り、WKWebView のレイヤー変形で画面にフィットさせる
 - Chrome 拡張 → Native Messaging host → Distributed Notification でアプリを操作
-- 設定はすべて `~/Library/Application Support/CodexLiveWallpaper/` のプレーンファイル
+- 設定はすべて `~/Library/Application Support/LiveWallpaper/` のプレーンファイル
 
 ## 既知の制限
 

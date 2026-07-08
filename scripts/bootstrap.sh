@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Codex Live Wallpaper を 1 コマンドでローカルビルド・インストールする。
+# Live Wallpaper を 1 コマンドでローカルビルド・インストールする。
 # ローカルでビルドするため Apple Developer Program(署名・公証)は不要。
 #
 # usage:

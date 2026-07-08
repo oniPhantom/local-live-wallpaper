@@ -37,7 +37,7 @@ document.getElementById('play-current').addEventListener('click', async () => {
 });
 
 document.getElementById('off').addEventListener('click', () => {
-  sendAndReport({ type: 'off' }, '壁紙を止めました');
+  sendAndReport({ type: 'off' }, '通常壁紙に戻しました');
 });
 
 document.getElementById('toggle').addEventListener('click', () => {
