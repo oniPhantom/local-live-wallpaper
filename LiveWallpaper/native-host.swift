@@ -17,7 +17,7 @@ enum Paths {
     static let stateURL = supportDir.appendingPathComponent("state.json")
 }
 
-let bundleIdentifier = "com.codex.livewallpaper"
+let bundleIdentifier = "com.local.livewallpaper"
 let notificationName = "com.local.livewallpaper.command"
 
 func readMessage() -> [String: Any]? {

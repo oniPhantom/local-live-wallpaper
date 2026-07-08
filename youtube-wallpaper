@@ -21,7 +21,6 @@ if [[ $# -eq 1 && "$1" == "off" ]]; then
   rm -f "$config_file"
   rm -f "$config_dir/playlist.txt"
   pkill -x LiveWallpaper 2>/dev/null || true
-  pkill -x CodexLiveWallpaper 2>/dev/null || true
   pkill -f "caffeinate.*LiveWallpaper" 2>/dev/null || true
   launch_app
   exit 0
@@ -30,6 +29,5 @@ elif [[ $# -eq 1 ]]; then
 fi
 
 pkill -x LiveWallpaper 2>/dev/null || true
-pkill -x CodexLiveWallpaper 2>/dev/null || true
 pkill -f "caffeinate.*LiveWallpaper" 2>/dev/null || true
 launch_app

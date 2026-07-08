@@ -7,10 +7,10 @@ set -euo pipefail
 # usage:
 #   /bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/oniPhantom/local-live-wallpaper/main/scripts/bootstrap.sh)"
 #
-# clone 先は CODEX_WALLPAPER_DIR で変更可(既定: ~/local-live-wallpaper)
+# clone 先は LIVE_WALLPAPER_DIR で変更可(既定: ~/local-live-wallpaper)
 
 repo_url="https://github.com/oniPhantom/local-live-wallpaper.git"
-dest="${CODEX_WALLPAPER_DIR:-$HOME/local-live-wallpaper}"
+dest="${LIVE_WALLPAPER_DIR:-$HOME/local-live-wallpaper}"
 
 if ! xcode-select -p >/dev/null 2>&1; then
   echo "Xcode Command Line Tools が必要です。インストールダイアログを開きます…"

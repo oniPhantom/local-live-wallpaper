@@ -8,11 +8,9 @@ set -euo pipefail
 
 repo_root="${0:A:h:h}"
 app="/Applications/LiveWallpaper.app"
-old_app="/Applications/CodexLiveWallpaper.app"
 app_executable="$app/Contents/MacOS/LiveWallpaper"
 build_dir="$repo_root/build"
 host_name="com.local.livewallpaper"
-old_host_name="com.codex.livewallpaper"
 nm_dir="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
 
 # manifest.json の "key" から導出される固定 ID(フォルダを移動しても変わらない)
@@ -21,15 +19,12 @@ extension_id="${1:-$default_extension_id}"
 
 echo "==> Swift をビルド"
 mkdir -p "$build_dir"
-swiftc -O "$repo_root/CodexLiveWallpaper/native-host.swift" -o "$build_dir/native-host"
-swiftc -O "$repo_root/CodexLiveWallpaper/main.swift" -o "$build_dir/LiveWallpaper"
+swiftc -O "$repo_root/LiveWallpaper/native-host.swift" -o "$build_dir/native-host"
+swiftc -O "$repo_root/LiveWallpaper/main.swift" -o "$build_dir/LiveWallpaper"
 
 echo "==> $app へインストール"
 was_running=0
 if pkill -x LiveWallpaper 2>/dev/null; then
-  was_running=1
-fi
-if pkill -x CodexLiveWallpaper 2>/dev/null; then
   was_running=1
 fi
 if pkill -f "caffeinate.*LiveWallpaper" 2>/dev/null; then
@@ -38,10 +33,9 @@ fi
 if [[ $was_running -eq 1 ]]; then
   sleep 1
 fi
-rm -rf "$old_app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$repo_root/CodexLiveWallpaper/Info.plist" "$app/Contents/Info.plist"
-cp "$repo_root/CodexLiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
+cp "$repo_root/LiveWallpaper/Info.plist" "$app/Contents/Info.plist"
+cp "$repo_root/LiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
 cp "$build_dir/LiveWallpaper" "$app/Contents/MacOS/LiveWallpaper"
 cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 codesign --force --sign - "$app/Contents/MacOS/native-host" 2>/dev/null || true
@@ -54,7 +48,6 @@ fi
 
 echo "==> Native Messaging host manifest を設置 (extension: $extension_id)"
 mkdir -p "$nm_dir"
-rm -f "$nm_dir/$old_host_name.json"
 cat > "$nm_dir/$host_name.json" <<EOF
 {
   "name": "$host_name",

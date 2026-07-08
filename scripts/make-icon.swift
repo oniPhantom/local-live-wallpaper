@@ -1,7 +1,7 @@
 import AppKit
 
 // アプリアイコン生成(一度だけ実行して icon.icns を作る):
-//   swift scripts/make-icon.swift && iconutil -c icns icon.iconset -o CodexLiveWallpaper/icon.icns && rm -r icon.iconset
+//   swift scripts/make-icon.swift && iconutil -c icns icon.iconset -o LiveWallpaper/icon.icns && rm -r icon.iconset
 
 func draw(size: Int) -> NSImage {
     let s = CGFloat(size)

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>com.codex.livewallpaper</string>
+	<string>com.local.livewallpaper</string>
 	<key>CFBundleName</key>
 	<string>LiveWallpaper</string>
 	<key>CFBundleExecutable</key>
