@@ -1,9 +1,14 @@
 #!/bin/zsh
 set -euo pipefail
 
-config_dir="$HOME/Library/Application Support/CodexLiveWallpaper"
+config_dir="$HOME/Library/Application Support/LiveWallpaper"
 config_file="$config_dir/youtube-url.txt"
-app="/Applications/CodexLiveWallpaper.app"
+app="/Applications/LiveWallpaper.app"
+app_executable="$app/Contents/MacOS/LiveWallpaper"
+
+launch_app() {
+  nohup caffeinate -dimsu "$app_executable" >/dev/null 2>&1 &
+}
 
 if [[ $# -ne 1 ]]; then
   echo "usage: youtube-wallpaper <youtube-url|off>" >&2
@@ -14,9 +19,17 @@ mkdir -p "$config_dir"
 
 if [[ "$1" == "off" ]]; then
   rm -f "$config_file"
+  rm -f "$config_dir/playlist.txt"
+  pkill -x LiveWallpaper 2>/dev/null || true
+  pkill -x CodexLiveWallpaper 2>/dev/null || true
+  pkill -f "caffeinate.*LiveWallpaper" 2>/dev/null || true
+  launch_app
+  exit 0
 else
   print -r -- "$1" > "$config_file"
 fi
 
-pkill CodexLiveWallpaper 2>/dev/null || true
-open -a "$app"
+pkill -x LiveWallpaper 2>/dev/null || true
+pkill -x CodexLiveWallpaper 2>/dev/null || true
+pkill -f "caffeinate.*LiveWallpaper" 2>/dev/null || true
+launch_app

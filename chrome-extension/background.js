@@ -1,4 +1,4 @@
-const NATIVE_HOST = 'com.codex.livewallpaper';
+const NATIVE_HOST = 'com.local.livewallpaper';
 
 // content script / popup からのコマンドを Native Messaging host へ中継する
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

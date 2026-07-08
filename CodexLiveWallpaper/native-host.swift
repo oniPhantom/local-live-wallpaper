@@ -3,12 +3,12 @@ import Foundation
 
 // Chrome Native Messaging host。
 // stdin から 4byte 長プレフィックス付き JSON を読み、設定ファイル更新と
-// Distributed Notification 経由で CodexLiveWallpaper.app へコマンドを中継する。
+// Distributed Notification 経由で LiveWallpaper.app へコマンドを中継する。
 
 enum Paths {
     static let supportDir = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper")
     static let configURL = supportDir.appendingPathComponent("youtube-url.txt")
     static let playlistURL = supportDir.appendingPathComponent("playlist.txt")
     static let volumeURL = supportDir.appendingPathComponent("volume.txt")
@@ -18,7 +18,7 @@ enum Paths {
 }
 
 let bundleIdentifier = "com.codex.livewallpaper"
-let notificationName = "com.codex.livewallpaper.command"
+let notificationName = "com.local.livewallpaper.command"
 
 func readMessage() -> [String: Any]? {
     let stdin = FileHandle.standardInput
@@ -58,14 +58,13 @@ func runningApp() -> NSRunningApplication? {
 }
 
 func launchApp() {
-    let appURL = URL(fileURLWithPath: "/Applications/CodexLiveWallpaper.app")
-    let configuration = NSWorkspace.OpenConfiguration()
-    configuration.activates = false
-    let semaphore = DispatchSemaphore(value: 0)
-    NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in
-        semaphore.signal()
-    }
-    _ = semaphore.wait(timeout: .now() + 10)
+    let executableURL = URL(fileURLWithPath: "/Applications/LiveWallpaper.app/Contents/MacOS/LiveWallpaper")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
+    process.arguments = ["-dimsu", executableURL.path]
+    process.standardOutput = FileHandle(forWritingAtPath: "/dev/null")
+    process.standardError = FileHandle(forWritingAtPath: "/dev/null")
+    try? process.run()
 }
 
 func postCommand(_ command: [String: Any]) {

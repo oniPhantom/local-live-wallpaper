@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Codex Live Wallpaper",
+  "name": "Live Wallpaper",
   "description": "YouTube ページからワンクリックでデスクトップ壁紙として再生する",
   "version": "0.2.0",
   "permissions": [
@@ -27,7 +27,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Codex Live Wallpaper"
+    "default_title": "Live Wallpaper"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzG4E3M5uKhCpZHdI1pZ3MUfyoOOeTTlGJoO2PjkQ19+5nI8v4mE0UobMEhZru9RJ6w62BTf0OZd0cWqGoL8FyCz7Z3kM5PX4hp3XpLfw/0dRg9Z0oFQnoMS1/NyJ2Gf1DszXv7m0VEnjIrjl/l+dXndlZnx+WZuUE7CQCRFFvlNSE35WYk2kB35jLe0mZCiTXZ7tE7DwJxGHL3pwMxRLzqfRuwGNOyti5juY31ldg3PALL0MixG35Pl8wOOHm8JzKYUD8vL4LfPvQ4PP2OSEbNvLFxzzxr84kzDtryFWpfDVIcF4gsvlDv7DhS5RgREGnp02mtzHtEKkqf4Rt1W26QIDAQAB"
 }

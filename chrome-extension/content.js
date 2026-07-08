@@ -1,6 +1,6 @@
 // YouTube ページに「壁紙にする」ボタンを表示し、現在の動画/playlist を native 側へ送る
 
-const BUTTON_ID = 'codex-wallpaper-button';
+const BUTTON_ID = 'live-wallpaper-button';
 
 function extractVideoID(href) {
   try {

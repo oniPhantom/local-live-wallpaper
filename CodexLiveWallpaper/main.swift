@@ -6,30 +6,33 @@ import WebKit
 let safariUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
 
 enum WallpaperSource {
+    static let supportDir = FileManager.default
+        .homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/LiveWallpaper")
     static let configURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/youtube-url.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/youtube-url.txt")
     static let volumeURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/volume.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/volume.txt")
     static let playlistURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/playlist.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/playlist.txt")
     static let largestOnlyURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/largest-only.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/largest-only.txt")
     static let qualityURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/quality.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/quality.txt")
     static let stateURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/state.json")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/state.json")
     static let panelHiddenURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/panel-hidden.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/panel-hidden.txt")
     static let batteryPauseOffURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/battery-pause-off.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/battery-pause-off.txt")
 
     static let allowedQualities = ["small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160"]
 
@@ -82,7 +85,7 @@ enum WallpaperSource {
 
     static let panelOriginURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/panel-origin.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/panel-origin.txt")
 
     // ユーザーがドラッグしたパネル位置(スクリーン座標の origin)
     static func panelOrigin() -> NSPoint? {
@@ -103,7 +106,7 @@ enum WallpaperSource {
 
     static let fitModeURL = FileManager.default
         .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/CodexLiveWallpaper/fit-mode.txt")
+        .appendingPathComponent("Library/Application Support/LiveWallpaper/fit-mode.txt")
 
     // "contain": 動画全体を表示(FullHD は縦幅いっぱい・左右黒帯)/ "cover": 切り抜いて画面を埋める
     static func fitMode() -> String {

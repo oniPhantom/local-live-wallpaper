@@ -7,18 +7,18 @@ set -euo pipefail
 #   1. Apple Developer Program に加入し、Developer ID Application 証明書を
 #      キーチェーンに入れておく
 #   2. notarytool のプロファイルを登録しておく:
-#      xcrun notarytool store-credentials codex-wallpaper \
+#      xcrun notarytool store-credentials live-wallpaper \
 #        --apple-id <APPLE_ID> --team-id <TEAM_ID> --password <APP_SPECIFIC_PASSWORD>
 #
 # usage:
 #   CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-#   NOTARY_PROFILE=codex-wallpaper \
+#   NOTARY_PROFILE=live-wallpaper \
 #   ./scripts/release.sh
 
 repo_root="${0:A:h:h}"
 build_dir="$repo_root/build"
 dist_dir="$repo_root/dist"
-app="$dist_dir/CodexLiveWallpaper.app"
+app="$dist_dir/LiveWallpaper.app"
 
 identity="${CODESIGN_IDENTITY:-}"
 profile="${NOTARY_PROFILE:-}"
@@ -30,9 +30,13 @@ fi
 
 echo "==> Swift をビルド (release, universal)"
 mkdir -p "$build_dir" "$dist_dir"
-for src in CodexLiveWallpaper native-host; do
-  swiftc -O -target arm64-apple-macos13.0 "$repo_root/CodexLiveWallpaper/${src/CodexLiveWallpaper/main}.swift" -o "$build_dir/$src-arm64"
-  swiftc -O -target x86_64-apple-macos13.0 "$repo_root/CodexLiveWallpaper/${src/CodexLiveWallpaper/main}.swift" -o "$build_dir/$src-x86_64"
+for src in LiveWallpaper native-host; do
+  swift_file="$repo_root/CodexLiveWallpaper/main.swift"
+  if [[ "$src" == "native-host" ]]; then
+    swift_file="$repo_root/CodexLiveWallpaper/native-host.swift"
+  fi
+  swiftc -O -target arm64-apple-macos13.0 "$swift_file" -o "$build_dir/$src-arm64"
+  swiftc -O -target x86_64-apple-macos13.0 "$swift_file" -o "$build_dir/$src-x86_64"
   lipo -create "$build_dir/$src-arm64" "$build_dir/$src-x86_64" -output "$build_dir/$src"
 done
 
@@ -41,7 +45,7 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$repo_root/CodexLiveWallpaper/Info.plist" "$app/Contents/Info.plist"
 cp "$repo_root/CodexLiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
-cp "$build_dir/CodexLiveWallpaper" "$app/Contents/MacOS/CodexLiveWallpaper"
+cp "$build_dir/LiveWallpaper" "$app/Contents/MacOS/LiveWallpaper"
 cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 
 echo "==> Developer ID で署名 (hardened runtime)"
@@ -49,7 +53,7 @@ codesign --force --options runtime --timestamp --sign "$identity" "$app/Contents
 codesign --force --options runtime --timestamp --sign "$identity" "$app"
 codesign --verify --deep --strict "$app"
 
-zip_path="$dist_dir/CodexLiveWallpaper.zip"
+zip_path="$dist_dir/LiveWallpaper.zip"
 rm -f "$zip_path"
 ditto -c -k --keepParent "$app" "$zip_path"
 
