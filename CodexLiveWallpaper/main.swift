@@ -155,6 +155,11 @@ enum WallpaperSource {
         try? (url + "\n").write(to: configURL, atomically: true, encoding: .utf8)
     }
 
+    static func currentURLString() -> String {
+        ((try? String(contentsOf: configURL, encoding: .utf8)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func savePlaylist(_ videoIDs: [String]) {
         let ids = videoIDs.compactMap(sanitizeID)
         if ids.isEmpty {
@@ -168,6 +173,14 @@ enum WallpaperSource {
     static func clear() {
         try? FileManager.default.removeItem(at: configURL)
         try? FileManager.default.removeItem(at: playlistURL)
+    }
+
+    static func videoID(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed), let id = youtubeID(from: url) {
+            return sanitizeID(id)
+        }
+        return sanitizeID(trimmed)
     }
 
     static func youtubeID() -> String? {
@@ -614,7 +627,7 @@ final class LoginWindowController: NSObject, WKUIDelegate {
     func show() {
         NSApp.activate(ignoringOtherApps: true)
         if let window {
-            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
             return
         }
         let config = WKWebViewConfiguration()
@@ -630,7 +643,7 @@ final class LoginWindowController: NSObject, WKUIDelegate {
             backing: .buffered,
             defer: false
         )
-        window.isReleasedWhenClosed = false
+        window.isReleasedWhenClosed = true
         window.title = "YouTube にログイン(閉じると壁紙に反映)"
         window.level = .floating
         window.contentView = webView
@@ -642,7 +655,7 @@ final class LoginWindowController: NSObject, WKUIDelegate {
             object: window
         )
         webView.load(URLRequest(url: URL(string: "https://www.youtube.com/")!))
-        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         self.window = window
         self.webView = webView
     }
@@ -668,6 +681,178 @@ final class LoginWindowController: NSObject, WKUIDelegate {
         }
         return nil
     }
+}
+
+// ログイン済みアカウントの YouTube ページを非表示で読み、保存済み再生リストを抽出する。
+final class PlaylistProvider: NSObject, WKNavigationDelegate {
+    private var window: NSWindow?
+    private var webView: WKWebView?
+    private var completion: (([(title: String, url: String)]) -> Void)?
+    private var attempts = 0
+    private var loadGeneration = 0
+
+    func load(completion: @escaping ([(title: String, url: String)]) -> Void) {
+        cancelCurrentLoad()
+        loadGeneration += 1
+        let generation = loadGeneration
+        self.completion = completion
+        attempts = 0
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 980, height: 720), configuration: config)
+        webView.customUserAgent = safariUserAgent
+        webView.navigationDelegate = self
+        let window = NSWindow(
+            contentRect: NSRect(x: -2400, y: -2400, width: 980, height: 720),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = true
+        window.alphaValue = 0.01
+        window.ignoresMouseEvents = true
+        window.contentView = webView
+        webView.load(URLRequest(url: URL(string: "https://www.youtube.com/feed/playlists")!))
+        window.orderFrontRegardless()
+        self.window = window
+        self.webView = webView
+        scheduleExtract(from: webView, generation: generation, after: 5)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 14) { [weak self] in
+            guard let self, self.loadGeneration == generation, self.completion != nil else { return }
+            self.finish([], generation: generation)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        scheduleExtract(from: webView, generation: loadGeneration, after: 1)
+    }
+
+    private func scheduleExtract(from webView: WKWebView, generation: Int, after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak webView] in
+            guard let self, let webView, self.loadGeneration == generation, self.completion != nil else { return }
+            self.extract(from: webView, generation: generation)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finish([], generation: loadGeneration)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        finish([], generation: loadGeneration)
+    }
+
+    private func extract(from webView: WKWebView, generation: Int) {
+        guard self.webView === webView, loadGeneration == generation, completion != nil else {
+            return
+        }
+        attempts += 1
+        webView.evaluateJavaScript(Self.extractScript) { [weak self] result, _ in
+            guard let self else { return }
+            guard self.webView === webView, self.loadGeneration == generation, self.completion != nil else {
+                return
+            }
+            guard let rows = result as? [[String: Any]] else {
+                if self.attempts >= 4 {
+                    self.finish([], generation: generation)
+                } else {
+                    self.scheduleExtract(from: webView, generation: generation, after: 2)
+                }
+                return
+            }
+            let entries = rows.compactMap { row -> (title: String, url: String)? in
+                guard let title = row["title"] as? String,
+                      let url = row["url"] as? String,
+                      !title.isEmpty,
+                      !url.isEmpty else {
+                    return nil
+                }
+                return (title, url)
+            }
+            if !entries.isEmpty || self.attempts >= 4 {
+                self.finish(entries, generation: generation)
+            } else {
+                self.scheduleExtract(from: webView, generation: generation, after: 2)
+            }
+        }
+    }
+
+    private func finish(_ entries: [(title: String, url: String)], generation: Int) {
+        guard loadGeneration == generation, let completion else {
+            return
+        }
+        cancelCurrentLoad()
+        completion(entries)
+    }
+
+    private func cancelCurrentLoad() {
+        let currentWebView = webView
+        webView = nil
+        currentWebView?.stopLoading()
+        currentWebView?.navigationDelegate = nil
+        let currentWindow = window
+        window = nil
+        currentWindow?.contentView = nil
+        currentWindow?.orderOut(nil)
+        currentWindow?.close()
+        completion = nil
+    }
+
+    private static let extractScript = """
+        (function() {
+          window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+          const byList = new Map();
+          const clean = function(value) {
+            return (value || '').replace(/\\s+/g, ' ').trim();
+          };
+          const textOf = function(value) {
+            if (!value) return '';
+            if (typeof value === 'string') return clean(value);
+            if (value.simpleText) return clean(value.simpleText);
+            if (Array.isArray(value.runs)) return clean(value.runs.map(function(run) { return run.text || ''; }).join(''));
+            return '';
+          };
+          const add = function(listID, title) {
+            if (!listID || byList.has(listID)) return;
+            title = clean(title) || listID;
+            if (title.length > 72) title = title.slice(0, 69) + '...';
+            byList.set(listID, {
+              title: title,
+              url: 'https://www.youtube.com/playlist?list=' + encodeURIComponent(listID)
+            });
+          };
+          const walk = function(value, depth) {
+            if (!value || depth > 12) return;
+            if (Array.isArray(value)) {
+              value.forEach(function(item) { walk(item, depth + 1); });
+              return;
+            }
+            if (typeof value !== 'object') return;
+            if (value.playlistId) {
+              add(value.playlistId, textOf(value.title) || textOf(value.header && value.header.title));
+            }
+            Object.keys(value).forEach(function(key) { walk(value[key], depth + 1); });
+          };
+          walk(window.ytInitialData, 0);
+          document.querySelectorAll('a[href*="list="]').forEach(function(anchor) {
+            let url;
+            let listID;
+            try {
+              url = new URL(anchor.href, location.origin);
+              listID = url.searchParams.get('list');
+            } catch (e) {
+              return;
+            }
+            if (!listID || byList.has(listID)) return;
+            const card = anchor.closest('ytd-rich-item-renderer,ytd-grid-playlist-renderer,ytd-playlist-video-renderer,ytd-compact-playlist-renderer,ytd-item-section-renderer,ytd-shelf-renderer') || anchor;
+            let title = clean(anchor.getAttribute('title')) || clean(anchor.textContent);
+            const heading = card.querySelector('#video-title,#playlist-title,h3,a[title],yt-formatted-string');
+            title = clean(heading && (heading.getAttribute('title') || heading.textContent)) || title || listID;
+            add(listID, title);
+          });
+          return Array.from(byList.values()).slice(0, 50);
+        })();
+        """
 }
 
 final class ProgressBar: NSView {
@@ -725,6 +910,11 @@ final class VolumePanel: NSPanel {
     var onPreviousVideo: (() -> Void)?
     var onNextVideo: (() -> Void)?
     var onQualityChange: ((String) -> Void)?
+    var onRestoreDesktop: (() -> Void)?
+    var onPlayURL: ((String) -> Void)?
+    var onPlaylistSelected: ((String) -> Void)?
+    var onRefreshPlaylists: (() -> Void)?
+    var onLogin: (() -> Void)?
 
     // 表示名 → vq 値。パネルのポップアップで使う
     static let qualityOptions: [(title: String, value: String)] = [
@@ -736,20 +926,29 @@ final class VolumePanel: NSPanel {
         ("480p", "large"),
     ]
 
-    private let expandedSize = NSSize(width: 300, height: 158)
-    private let collapsedSize = NSSize(width: 300, height: 34)
+    private let expandedSize = NSSize(width: 360, height: 230)
+    private let collapsedSize = NSSize(width: 360, height: 38)
     private let root: NSVisualEffectView
     private let valueLabel = NSTextField(labelWithString: "0")
-    private let progressBar = ProgressBar(frame: NSRect(x: 16, y: 14, width: 268, height: 14))
+    private let progressBar = ProgressBar(frame: NSRect(x: 16, y: 14, width: 328, height: 14))
     private let collapseButton = NSButton(frame: .zero)
     private let playButton = NSButton(frame: .zero)
+    private let urlField = NSTextField(frame: .zero)
+    private let playlistPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let loginButton = NSButton(title: "ログイン", target: nil, action: nil)
     private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let currentTimeLabel = NSTextField(labelWithString: "--:--")
     private let durationLabel = NSTextField(labelWithString: "--:--")
     private let stateLabel = NSTextField(labelWithString: "")
+    private var playlistURLs: [String] = []
+    private var videoControls: [NSControl] = []
     private var isPlayingIcon = false
     private var collapsibleViews: [NSView] = []
     private var isCollapsed = false
+
+    override var canBecomeKey: Bool {
+        true
+    }
 
     init(volume: Int) {
         let frame = NSRect(origin: .zero, size: expandedSize)
@@ -774,7 +973,7 @@ final class VolumePanel: NSPanel {
         root.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
 
         // ヘッダー: ロゴ + タイトル / 画質 / 折りたたみ
-        let logo = NSImageView(frame: NSRect(x: 16, y: 126, width: 18, height: 18))
+        let logo = NSImageView(frame: NSRect(x: 16, y: 198, width: 18, height: 18))
         logo.image = NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 14, weight: .bold))
         logo.contentTintColor = NSColor(calibratedRed: 1.0, green: 0.18, blue: 0.13, alpha: 1)
@@ -782,14 +981,14 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(logo)
 
         // 商標配慮で製品名は "YouTube" を含めない
-        let title = NSTextField(labelWithString: "Codex Live Wallpaper")
-        title.frame = NSRect(x: 39, y: 127, width: 140, height: 16)
+        let title = NSTextField(labelWithString: "Live Wallpaper")
+        title.frame = NSRect(x: 39, y: 199, width: 160, height: 16)
         title.textColor = NSColor(calibratedWhite: 1, alpha: 0.92)
         title.font = .systemFont(ofSize: 11, weight: .semibold)
         root.addSubview(title)
         collapsibleViews.append(title)
 
-        qualityPopUp.frame = NSRect(x: 184, y: 123, width: 80, height: 22)
+        qualityPopUp.frame = NSRect(x: 244, y: 195, width: 80, height: 22)
         qualityPopUp.controlSize = .small
         qualityPopUp.font = .systemFont(ofSize: 10, weight: .medium)
         Self.qualityOptions.forEach { qualityPopUp.addItem(withTitle: $0.title) }
@@ -803,27 +1002,78 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(qualityPopUp)
 
         configureIconButton(collapseButton, symbol: "chevron.down", size: 11, action: #selector(toggleCollapsed))
-        collapseButton.frame = NSRect(x: 266, y: 124, width: 20, height: 20)
+        collapseButton.frame = NSRect(x: 326, y: 196, width: 20, height: 20)
         root.addSubview(collapseButton)
+
+        urlField.frame = NSRect(x: 16, y: 160, width: 272, height: 24)
+        urlField.placeholderString = "YouTube URL / playlist URL"
+        urlField.font = .systemFont(ofSize: 11)
+        urlField.lineBreakMode = .byTruncatingMiddle
+        urlField.target = self
+        urlField.action = #selector(playURLTapped)
+        root.addSubview(urlField)
+        collapsibleViews.append(urlField)
+
+        let playURLButton = NSButton(title: "再生", target: self, action: #selector(playURLTapped))
+        playURLButton.frame = NSRect(x: 296, y: 159, width: 48, height: 26)
+        playURLButton.controlSize = .small
+        playURLButton.bezelStyle = .rounded
+        root.addSubview(playURLButton)
+        collapsibleViews.append(playURLButton)
+
+        playlistPopUp.frame = NSRect(x: 16, y: 126, width: 214, height: 26)
+        playlistPopUp.controlSize = .small
+        playlistPopUp.font = .systemFont(ofSize: 11)
+        playlistPopUp.addItem(withTitle: "再生リストを読み込み中")
+        playlistPopUp.target = self
+        playlistPopUp.action = #selector(playlistSelected(_:))
+        root.addSubview(playlistPopUp)
+        collapsibleViews.append(playlistPopUp)
+
+        let refreshPlaylistsButton = NSButton(title: "更新", target: self, action: #selector(refreshPlaylistsTapped))
+        refreshPlaylistsButton.frame = NSRect(x: 236, y: 125, width: 48, height: 26)
+        refreshPlaylistsButton.controlSize = .small
+        refreshPlaylistsButton.bezelStyle = .rounded
+        root.addSubview(refreshPlaylistsButton)
+        collapsibleViews.append(refreshPlaylistsButton)
+
+        loginButton.frame = NSRect(x: 290, y: 125, width: 54, height: 26)
+        loginButton.target = self
+        loginButton.action = #selector(loginTapped)
+        loginButton.controlSize = .small
+        loginButton.bezelStyle = .rounded
+        root.addSubview(loginButton)
+        collapsibleViews.append(loginButton)
 
         // トランスポート(中央寄せ)
         let previousButton = makeIconButton(symbol: "backward.fill", size: 15, action: #selector(previousTapped))
-        previousButton.frame = NSRect(x: 92, y: 76, width: 36, height: 30)
+        previousButton.frame = NSRect(x: 122, y: 86, width: 36, height: 30)
         root.addSubview(previousButton)
         collapsibleViews.append(previousButton)
+        videoControls.append(previousButton)
 
         configureIconButton(playButton, symbol: "play.fill", size: 19, action: #selector(playTapped))
-        playButton.frame = NSRect(x: 132, y: 74, width: 36, height: 34)
+        playButton.frame = NSRect(x: 162, y: 84, width: 36, height: 34)
         root.addSubview(playButton)
         collapsibleViews.append(playButton)
+        videoControls.append(playButton)
 
         let nextButton = makeIconButton(symbol: "forward.fill", size: 15, action: #selector(nextTapped))
-        nextButton.frame = NSRect(x: 172, y: 76, width: 36, height: 30)
+        nextButton.frame = NSRect(x: 202, y: 86, width: 36, height: 30)
         root.addSubview(nextButton)
         collapsibleViews.append(nextButton)
+        videoControls.append(nextButton)
+
+        let restoreButton = makeIconButton(symbol: "xmark.circle.fill", size: 17, action: #selector(restoreDesktopTapped))
+        restoreButton.toolTip = "YouTube 再生を止めて通常壁紙に戻す"
+        restoreButton.contentTintColor = NSColor(calibratedRed: 1.0, green: 0.36, blue: 0.32, alpha: 0.9)
+        restoreButton.frame = NSRect(x: 254, y: 86, width: 36, height: 30)
+        root.addSubview(restoreButton)
+        collapsibleViews.append(restoreButton)
+        videoControls.append(restoreButton)
 
         // 音量
-        let speaker = NSImageView(frame: NSRect(x: 16, y: 50, width: 16, height: 16))
+        let speaker = NSImageView(frame: NSRect(x: 16, y: 60, width: 16, height: 16))
         speaker.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .medium))
         speaker.contentTintColor = NSColor(calibratedWhite: 1, alpha: 0.6)
@@ -831,13 +1081,13 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(speaker)
 
         let slider = NSSlider(value: Double(volume), minValue: 0, maxValue: 100, target: self, action: #selector(changed(_:)))
-        slider.frame = NSRect(x: 38, y: 48, width: 206, height: 20)
+        slider.frame = NSRect(x: 38, y: 58, width: 266, height: 20)
         slider.controlSize = .small
         slider.isContinuous = true
         root.addSubview(slider)
         collapsibleViews.append(slider)
 
-        valueLabel.frame = NSRect(x: 250, y: 50, width: 34, height: 16)
+        valueLabel.frame = NSRect(x: 310, y: 60, width: 34, height: 16)
         valueLabel.alignment = .right
         valueLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.6)
         valueLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
@@ -845,21 +1095,21 @@ final class VolumePanel: NSPanel {
         collapsibleViews.append(valueLabel)
 
         // 時間・再生状態の行
-        currentTimeLabel.frame = NSRect(x: 16, y: 30, width: 84, height: 13)
+        currentTimeLabel.frame = NSRect(x: 16, y: 38, width: 94, height: 13)
         currentTimeLabel.alignment = .left
         currentTimeLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.75)
         currentTimeLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
         root.addSubview(currentTimeLabel)
         collapsibleViews.append(currentTimeLabel)
 
-        stateLabel.frame = NSRect(x: 100, y: 30, width: 100, height: 13)
+        stateLabel.frame = NSRect(x: 110, y: 38, width: 140, height: 13)
         stateLabel.alignment = .center
         stateLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.45)
         stateLabel.font = .systemFont(ofSize: 9, weight: .medium)
         root.addSubview(stateLabel)
         collapsibleViews.append(stateLabel)
 
-        durationLabel.frame = NSRect(x: 200, y: 30, width: 84, height: 13)
+        durationLabel.frame = NSRect(x: 250, y: 38, width: 94, height: 13)
         durationLabel.alignment = .right
         durationLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.75)
         durationLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
@@ -874,6 +1124,9 @@ final class VolumePanel: NSPanel {
 
         contentView = root
         changed(slider)
+        setSourceURL(WallpaperSource.currentURLString())
+        setPlaybackAvailable(false)
+        setPlaylists([], loading: true)
     }
 
     private func makeIconButton(symbol: String, size: CGFloat, action: Selector) -> NSButton {
@@ -909,6 +1162,7 @@ final class VolumePanel: NSPanel {
             isPlayingIcon = playing
             configureIconButton(playButton, symbol: playing ? "pause.fill" : "play.fill", size: 19, action: #selector(playTapped))
         }
+        setPlaybackAvailable(true)
         stateLabel.stringValue = playing ? "再生中" : "一時停止"
         stateLabel.textColor = playing
             ? NSColor(calibratedRed: 0.35, green: 0.85, blue: 0.45, alpha: 0.9)
@@ -916,6 +1170,40 @@ final class VolumePanel: NSPanel {
         currentTimeLabel.stringValue = Self.formatTime(currentTime)
         // duration 0 はライブ配信や未取得
         durationLabel.stringValue = duration > 0 ? Self.formatTime(duration) : "--:--"
+    }
+
+    func setSourceURL(_ url: String) {
+        urlField.stringValue = url
+    }
+
+    func setPlaylists(_ entries: [(title: String, url: String)], loading: Bool = false) {
+        playlistURLs = entries.map(\.url)
+        playlistPopUp.removeAllItems()
+        if loading {
+            playlistPopUp.addItem(withTitle: "再生リストを読み込み中")
+            playlistPopUp.isEnabled = false
+        } else if entries.isEmpty {
+            playlistPopUp.addItem(withTitle: "再生リストなし / 未ログイン")
+            playlistPopUp.isEnabled = false
+        } else {
+            entries.forEach { playlistPopUp.addItem(withTitle: $0.title) }
+            playlistPopUp.isEnabled = true
+        }
+    }
+
+    func setPlaybackAvailable(_ available: Bool) {
+        videoControls.forEach { $0.isEnabled = available }
+        if !available {
+            setProgress(0)
+            currentTimeLabel.stringValue = "--:--"
+            durationLabel.stringValue = "--:--"
+            stateLabel.stringValue = "待機中"
+            stateLabel.textColor = NSColor(calibratedWhite: 1, alpha: 0.45)
+            if isPlayingIcon {
+                isPlayingIcon = false
+                configureIconButton(playButton, symbol: "play.fill", size: 19, action: #selector(playTapped))
+            }
+        }
     }
 
     private static func formatTime(_ seconds: Double) -> String {
@@ -944,6 +1232,31 @@ final class VolumePanel: NSPanel {
         onNextVideo?()
     }
 
+    @objc private func restoreDesktopTapped() {
+        onRestoreDesktop?()
+    }
+
+    @objc private func playURLTapped() {
+        onPlayURL?(urlField.stringValue)
+    }
+
+    @objc private func playlistSelected(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        guard playlistURLs.indices.contains(index) else {
+            return
+        }
+        onPlaylistSelected?(playlistURLs[index])
+    }
+
+    @objc private func refreshPlaylistsTapped() {
+        setPlaylists([], loading: true)
+        onRefreshPlaylists?()
+    }
+
+    @objc private func loginTapped() {
+        onLogin?()
+    }
+
     @objc private func qualityChanged(_ sender: NSPopUpButton) {
         let index = sender.indexOfSelectedItem
         guard Self.qualityOptions.indices.contains(index) else {
@@ -957,11 +1270,11 @@ final class VolumePanel: NSPanel {
         collapsibleViews.forEach { $0.isHidden = isCollapsed }
         configureIconButton(collapseButton, symbol: isCollapsed ? "chevron.up" : "chevron.down", size: 11, action: #selector(toggleCollapsed))
         collapseButton.frame = isCollapsed
-            ? NSRect(x: 266, y: 7, width: 20, height: 20)
-            : NSRect(x: 266, y: 124, width: 20, height: 20)
+            ? NSRect(x: 326, y: 9, width: 20, height: 20)
+            : NSRect(x: 326, y: 196, width: 20, height: 20)
         progressBar.frame = isCollapsed
-            ? NSRect(x: 16, y: 10, width: 242, height: 14)
-            : NSRect(x: 16, y: 14, width: 268, height: 14)
+            ? NSRect(x: 16, y: 12, width: 302, height: 14)
+            : NSRect(x: 16, y: 14, width: 328, height: 14)
 
         let newSize = isCollapsed ? collapsedSize : expandedSize
         var frame = frame
@@ -1146,6 +1459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pendingRestore: (progress: Double, resume: Bool)?
 
     private let loginWindow = LoginWindowController()
+    private let playlistProvider = PlaylistProvider()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -1156,6 +1470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // ログイン後の cookie で player を作り直す(フォールバック中でも即再挑戦)
             self?.resetFallback()
             self?.makeWindows()
+            self?.refreshPlaylists()
         }
         NotificationCenter.default.addObserver(
             self,
@@ -1172,7 +1487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(handleRemoteCommand(_:)),
-            name: Notification.Name("com.codex.livewallpaper.command"),
+            name: Notification.Name("com.local.livewallpaper.command"),
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
@@ -1216,8 +1531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             resetFallback()
             rebuildWindows(fresh: true)
         case "off":
-            resetFallback()
-            rebuildWindows(fresh: true)
+            restoreDesktop()
         case "pause", "toggle":
             togglePlaybackTracked()
         case "next":
@@ -1363,7 +1677,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "CodexLiveWallpaper を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Live Wallpaper を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
 
@@ -1385,7 +1699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "play.tv", accessibilityDescription: "Codex Live Wallpaper")
+            button.image = NSImage(systemSymbolName: "play.tv", accessibilityDescription: "Live Wallpaper")
         }
         let menu = NSMenu()
         menu.delegate = self
@@ -1441,7 +1755,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let off = NSMenuItem(title: "壁紙を止める", action: #selector(menuOff), keyEquivalent: "")
+        let off = NSMenuItem(title: "通常壁紙に戻す", action: #selector(menuOff), keyEquivalent: "")
         off.target = self
         off.isEnabled = hasVideo
         menu.addItem(off)
@@ -1496,9 +1810,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func menuOff() {
+        restoreDesktop()
+    }
+
+    private func restoreDesktop() {
         WallpaperSource.clear()
         resetFallback()
+        pendingRestore = nil
+        userPaused = false
+        lastPlaying = false
+        lastProgress = 0
+        autoPauseReasons.removeAll()
+        autoPaused = false
+        windows.forEach { $0.close() }
+        windows.removeAll()
+        youtubeViews.removeAll()
+        progressTimer?.invalidate()
+        progressTimer = nil
+        WallpaperSource.clearState()
+        updateVolumePanel(youtubeEnabled: false, volume: WallpaperSource.volume())
+    }
+
+    private func playURL(_ rawURL: String) {
+        let url = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard URL(string: url) != nil, !url.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        WallpaperSource.saveYouTubeURL(url)
+        WallpaperSource.savePlaylist([])
+        resetFallback()
         rebuildWindows(fresh: true)
+    }
+
+    private func refreshPlaylists() {
+        volumePanel?.setPlaylists([], loading: true)
+        playlistProvider.load { [weak self] entries in
+            DispatchQueue.main.async {
+                self?.volumePanel?.setPlaylists(entries)
+            }
+        }
     }
 
     @objc private func menuQuit() {
@@ -1536,7 +1887,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let videoIDs = WallpaperSource.playlistVideoIDs()
         let volume = WallpaperSource.volume()
         // フォールバック中は設定を残したままアニメ壁紙を表示する
-        let youtubeEnabled = (youtubeID != nil || playlistID != nil || !videoIDs.isEmpty) && !fallbackActive
+        let hasVideoSource = youtubeID != nil || playlistID != nil || !videoIDs.isEmpty
+        let youtubeEnabled = hasVideoSource && !fallbackActive
+        guard youtubeEnabled || fallbackActive else {
+            windows.removeAll()
+            updateVolumePanel(youtubeEnabled: false, volume: volume)
+            WallpaperSource.clearState()
+            return
+        }
         let largestOnly = WallpaperSource.videoOnLargestScreenOnly()
         let screens = NSScreen.screens
         let largestScreen = screens.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
@@ -1600,7 +1958,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateVolumePanel(youtubeEnabled: Bool, volume: Int) {
-        guard youtubeEnabled, !WallpaperSource.panelHidden(), let screen = NSScreen.main else {
+        guard !WallpaperSource.panelHidden(), let screen = NSScreen.main else {
             volumePanel?.close()
             volumePanel = nil
             return
@@ -1632,9 +1990,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onNextVideo = { [weak self] in
             self?.youtubeViews.forEach { $0.nextVideo() }
         }
+        panel.onRestoreDesktop = { [weak self] in
+            self?.restoreDesktop()
+        }
+        panel.onPlayURL = { [weak self] url in
+            self?.playURL(url)
+        }
+        panel.onPlaylistSelected = { [weak self] url in
+            self?.playURL(url)
+        }
+        panel.onRefreshPlaylists = { [weak self] in
+            self?.refreshPlaylists()
+        }
+        panel.onLogin = { [weak self] in
+            self?.loginWindow.show()
+        }
         panel.onQualityChange = { [weak self] quality in
             WallpaperSource.saveMaxQuality(quality)
             self?.youtubeViews.forEach { $0.setQuality(quality) }
+        }
+        panel.setSourceURL(WallpaperSource.currentURLString())
+        panel.setPlaybackAvailable(youtubeEnabled)
+        if volumePanel == nil {
+            panel.setPlaylists([], loading: true)
+            refreshPlaylists()
         }
         let f = screen.visibleFrame
         // visibleFrame は Dock・メニューバーを除いた領域なので、Dock と重ならない
