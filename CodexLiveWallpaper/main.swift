@@ -1440,6 +1440,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var volumePanel: VolumePanel?
     private var progressTimer: Timer?
     private var statusItem: NSStatusItem?
+    private var keepAliveActivity: NSObjectProtocol?
+    private var keepAliveWindow: NSWindow?
 
     // 再生失敗時のフォールバック管理
     private var playbackFailureCount = 0
@@ -1462,9 +1464,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let playlistProvider = PlaylistProvider()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ProcessInfo.processInfo.disableAutomaticTermination("Keep Live Wallpaper control panel available")
+        ProcessInfo.processInfo.disableSuddenTermination()
+        keepAliveActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
+            reason: "Keep Live Wallpaper control panel available"
+        )
         NSApp.setActivationPolicy(.accessory)
         makeMainMenu()
         makeStatusItem()
+        makeKeepAliveWindow()
         makeWindows()
         loginWindow.onClose = { [weak self] in
             // ログイン後の cookie で player を作り直す(フォールバック中でも即再挑戦)
@@ -1510,6 +1519,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.checkBattery()
         }
         checkBattery()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    private func makeKeepAliveWindow() {
+        guard keepAliveWindow == nil else {
+            return
+        }
+        let window = NSWindow(
+            contentRect: NSRect(x: -10000, y: -10000, width: 1, height: 1),
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.alphaValue = 0.01
+        window.ignoresMouseEvents = true
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        window.orderFrontRegardless()
+        keepAliveWindow = window
     }
 
     @objc private func handleRemoteCommand(_ notification: Notification) {
