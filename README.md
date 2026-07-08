@@ -58,8 +58,9 @@ YouTube にログインする(推奨・広告なしになる):
 - **CLI**:
 
 ```bash
-./youtube-wallpaper "https://www.youtube.com/watch?v=VIDEO_ID"
-./youtube-wallpaper off
+make play
+make play URL="https://www.youtube.com/watch?v=VIDEO_ID"
+make off
 ```
 
 ## アンインストール
