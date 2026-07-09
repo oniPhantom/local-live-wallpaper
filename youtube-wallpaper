@@ -11,7 +11,7 @@ launch_app() {
 }
 
 if [[ $# -gt 1 ]]; then
-  echo "usage: youtube-wallpaper [youtube-url|off]" >&2
+  echo "usage: youtube-wallpaper [youtube-url|video-file-path|off]" >&2
   exit 64
 fi
 

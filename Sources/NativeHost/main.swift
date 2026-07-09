@@ -1,21 +1,11 @@
 import AppKit
 import Foundation
+import LiveWallpaperCore
 
 // Chrome Native Messaging host。
 // stdin から 4byte 長プレフィックス付き JSON を読み、設定ファイル更新と
 // Distributed Notification 経由で LiveWallpaper.app へコマンドを中継する。
-
-enum Paths {
-    static let supportDir = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/LiveWallpaper")
-    static let configURL = supportDir.appendingPathComponent("youtube-url.txt")
-    static let playlistURL = supportDir.appendingPathComponent("playlist.txt")
-    static let volumeURL = supportDir.appendingPathComponent("volume.txt")
-    static let largestOnlyURL = supportDir.appendingPathComponent("largest-only.txt")
-    static let qualityURL = supportDir.appendingPathComponent("quality.txt")
-    static let stateURL = supportDir.appendingPathComponent("state.json")
-}
+// 設定ファイルのパス・形式は LiveWallpaperCore.WallpaperSource と共有する
 
 let bundleIdentifier = "com.local.livewallpaper"
 let notificationName = "com.local.livewallpaper.command"
@@ -42,15 +32,6 @@ func writeMessage(_ object: [String: Any]) {
     let stdout = FileHandle.standardOutput
     stdout.write(lengthData)
     stdout.write(data)
-}
-
-func sanitizeID(_ raw: String) -> String? {
-    let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty, trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
-        return nil
-    }
-    return trimmed
 }
 
 func runningApp() -> NSRunningApplication? {
@@ -81,40 +62,40 @@ func postCommand(_ command: [String: Any]) {
 }
 
 func persist(command: [String: Any], type: String) {
-    try? FileManager.default.createDirectory(at: Paths.supportDir, withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(at: WallpaperSource.supportDir, withIntermediateDirectories: true)
     switch type {
     case "play":
         if let url = command["url"] as? String,
            !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             try? (url.trimmingCharacters(in: .whitespacesAndNewlines) + "\n")
-                .write(to: Paths.configURL, atomically: true, encoding: .utf8)
+                .write(to: WallpaperSource.configURL, atomically: true, encoding: .utf8)
         }
         let ids = ((command["videoIds"] as? [Any]) ?? [])
             .compactMap { $0 as? String }
-            .compactMap(sanitizeID)
+            .compactMap(WallpaperSource.sanitizeID)
         if ids.count > 1 {
             try? (ids.joined(separator: "\n") + "\n")
-                .write(to: Paths.playlistURL, atomically: true, encoding: .utf8)
+                .write(to: WallpaperSource.playlistURL, atomically: true, encoding: .utf8)
         } else {
-            try? FileManager.default.removeItem(at: Paths.playlistURL)
+            try? FileManager.default.removeItem(at: WallpaperSource.playlistURL)
         }
     case "off":
-        try? FileManager.default.removeItem(at: Paths.configURL)
-        try? FileManager.default.removeItem(at: Paths.playlistURL)
+        try? FileManager.default.removeItem(at: WallpaperSource.configURL)
+        try? FileManager.default.removeItem(at: WallpaperSource.playlistURL)
     case "volume":
         if let value = (command["value"] as? NSNumber)?.intValue {
-            try? "\(min(100, max(0, value)))\n".write(to: Paths.volumeURL, atomically: true, encoding: .utf8)
+            try? "\(min(100, max(0, value)))\n".write(to: WallpaperSource.volumeURL, atomically: true, encoding: .utf8)
         }
     case "screens":
         if (command["largestOnly"] as? Bool) == true {
-            try? "1\n".write(to: Paths.largestOnlyURL, atomically: true, encoding: .utf8)
+            try? "1\n".write(to: WallpaperSource.largestOnlyURL, atomically: true, encoding: .utf8)
         } else {
-            try? FileManager.default.removeItem(at: Paths.largestOnlyURL)
+            try? FileManager.default.removeItem(at: WallpaperSource.largestOnlyURL)
         }
     case "quality":
-        let allowed = ["auto", "small", "medium", "large", "hd720", "hd1080", "hd1440", "hd2160"]
+        let allowed = ["auto"] + WallpaperSource.allowedQualities
         if let value = command["value"] as? String, allowed.contains(value) {
-            try? (value + "\n").write(to: Paths.qualityURL, atomically: true, encoding: .utf8)
+            try? (value + "\n").write(to: WallpaperSource.qualityURL, atomically: true, encoding: .utf8)
         }
     default:
         break
@@ -124,18 +105,18 @@ func persist(command: [String: Any], type: String) {
 // 設定ファイルとアプリが書き出す state.json から現状を組み立てる
 func currentStatus() -> [String: Any] {
     var status: [String: Any] = [:]
-    if let url = try? String(contentsOf: Paths.configURL, encoding: .utf8) {
+    if let url = try? String(contentsOf: WallpaperSource.configURL, encoding: .utf8) {
         status["url"] = url.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    if let raw = try? String(contentsOf: Paths.volumeURL, encoding: .utf8),
+    if let raw = try? String(contentsOf: WallpaperSource.volumeURL, encoding: .utf8),
        let volume = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
         status["volume"] = min(100, max(0, volume))
     }
-    if let raw = try? String(contentsOf: Paths.qualityURL, encoding: .utf8) {
+    if let raw = try? String(contentsOf: WallpaperSource.qualityURL, encoding: .utf8) {
         status["quality"] = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    status["largestOnly"] = FileManager.default.fileExists(atPath: Paths.largestOnlyURL.path)
-    if let data = try? Data(contentsOf: Paths.stateURL),
+    status["largestOnly"] = FileManager.default.fileExists(atPath: WallpaperSource.largestOnlyURL.path)
+    if let data = try? Data(contentsOf: WallpaperSource.stateURL),
        let state = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
         status["playing"] = state["playing"] ?? false
         status["progress"] = state["progress"] ?? 0

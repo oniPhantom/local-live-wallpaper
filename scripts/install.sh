@@ -17,10 +17,13 @@ nm_dir="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
 default_extension_id="gapcbmiahdgeennnieipbddmhpmnhhgg"
 extension_id="${1:-$default_extension_id}"
 
-echo "==> Swift をビルド"
+echo "==> Swift をビルド (SPM release)"
 mkdir -p "$build_dir"
-swiftc -O "$repo_root/LiveWallpaper/native-host.swift" -o "$build_dir/native-host"
-swiftc -O "$repo_root/LiveWallpaper/main.swift" -o "$build_dir/LiveWallpaper"
+swift build --package-path "$repo_root" -c release
+# SPM のターゲット名にハイフンが使えないため NativeHost でビルドし、配置時に native-host へ改名する
+spm_bin_dir="$(swift build --package-path "$repo_root" -c release --show-bin-path)"
+cp "$spm_bin_dir/NativeHost" "$build_dir/native-host"
+cp "$spm_bin_dir/LiveWallpaper" "$build_dir/LiveWallpaper"
 
 echo "==> $app へインストール"
 was_running=0
@@ -34,8 +37,8 @@ if [[ $was_running -eq 1 ]]; then
   sleep 1
 fi
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-cp "$repo_root/LiveWallpaper/Info.plist" "$app/Contents/Info.plist"
-cp "$repo_root/LiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
+cp "$repo_root/Sources/LiveWallpaper/Info.plist" "$app/Contents/Info.plist"
+cp "$repo_root/Sources/LiveWallpaper/icon.icns" "$app/Contents/Resources/icon.icns"
 cp "$build_dir/LiveWallpaper" "$app/Contents/MacOS/LiveWallpaper"
 cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 codesign --force --sign - "$app/Contents/MacOS/native-host" 2>/dev/null || true

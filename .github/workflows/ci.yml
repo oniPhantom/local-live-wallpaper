@@ -1,0 +1,18 @@
+# push / PR ごとに macOS で build + test を回して退行を検知する
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift バージョン確認
+        run: swift --version
+      - name: ビルド
+        run: swift build -c release
+      - name: テスト
+        run: swift test
