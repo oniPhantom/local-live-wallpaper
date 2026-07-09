@@ -21,6 +21,11 @@ Control it from the Chrome extension's "Set as wallpaper" button, the menu bar, 
 - Xcode Command Line Tools (`xcode-select --install`)
 - Google Chrome (if you want to control it from the extension)
 
+> ⚠️ If `swift build` / `swift test` fails with `Invalid manifest`, the SPM that ships
+> with your Command Line Tools is broken. If Xcode is installed, switch with
+> `sudo xcode-select -s /Applications/Xcode.app`
+> (`install.sh` / `release.sh` / `make test` automatically fall back to Xcode when present).
+
 ## Quick Install (one command)
 
 ```bash

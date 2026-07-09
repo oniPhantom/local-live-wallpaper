@@ -24,6 +24,13 @@ build_dir="$repo_root/build"
 dist_dir="$repo_root/dist"
 app="$dist_dir/LiveWallpaper.app"
 
+# xcode-select が Command Line Tools を指していると SPM が Package.swift を
+# ビルドできない環境があるため、Xcode があればそちらのツールチェーンを使う
+if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p 2>/dev/null)" == *CommandLineTools* \
+      && -d /Applications/Xcode.app/Contents/Developer ]]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
 identity="${CODESIGN_IDENTITY:-}"
 profile="${NOTARY_PROFILE:-}"
 allow_adhoc="${ALLOW_ADHOC:-0}"
