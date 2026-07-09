@@ -15,6 +15,9 @@ Control it from the Chrome extension's "Set as wallpaper" button, the menu bar, 
 > ⚠️ This tool is intended for personal use. It modifies how the YouTube page
 > is displayed to show only the video, so use it at your own risk.
 
+> 🌐 The app UI (menu bar, control panel, Chrome extension) is currently Japanese-only.
+> The menu/button names in this README are unofficial English translations.
+
 ## Requirements
 
 - macOS 13 or later (Apple Silicon / Intel)

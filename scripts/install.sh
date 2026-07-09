@@ -51,10 +51,13 @@ cp "$build_dir/native-host" "$app/Contents/MacOS/native-host"
 codesign --force --sign - "$app/Contents/MacOS/native-host" 2>/dev/null || true
 codesign --force --sign - "$app" 2>/dev/null || true
 
+# 初回インストールでも起動する(メニューバーからすぐ操作できるように)
 if [[ $was_running -eq 1 ]]; then
   echo "==> 壁紙アプリを再起動"
-  nohup caffeinate -dimsu "$app_executable" >/dev/null 2>&1 &
+else
+  echo "==> 壁紙アプリを起動"
 fi
+nohup caffeinate -dimsu "$app_executable" >/dev/null 2>&1 &
 
 echo "==> Native Messaging host manifest を設置 (extension: $extension_id)"
 mkdir -p "$nm_dir"

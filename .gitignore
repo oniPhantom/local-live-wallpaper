@@ -3,3 +3,6 @@ build/
 dist/
 .DS_Store
 chrome-extension/key.pem
+.claude/
+chrome-extension.zip
+*.p12

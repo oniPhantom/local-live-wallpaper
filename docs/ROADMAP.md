@@ -12,7 +12,7 @@ YouTube の watch ページを WKWebView でデスクトップレベルに表示
 - 自動一時停止(ロック・遮蔽・バッテリー)、失敗時フォールバック + 自動リトライなど信頼性への配慮が厚い
 - 署名不要のローカルビルド 1 コマンドインストール
 
-**構造的リスク**
+**構造的リスク(着手時点 2026-07-09。下記はフェーズ 1 で解消済み)**
 
 - `main.swift` 1 ファイル約 2,100 行のモノリス。テストゼロ・CI なし
 - YouTube の内部 API(`movie_player`)と DOM 構造(`ytInitialData` スクレイピング)への強依存 — YouTube 側の変更で静かに壊れる
@@ -37,7 +37,7 @@ YouTube の watch ページを WKWebView でデスクトップレベルに表示
 ### フェーズ 1 終了条件(Definition of Done)
 
 - [x] `Package.swift` が存在し、`swift build` が成功する(共有ロジックはライブラリターゲット、`LiveWallpaper` / `native-host` は executable ターゲット)
-- [x] `main.swift` が責務別ファイル(設定 / player / パネル UI / フォールバック壁紙 / AppDelegate)に分割され、1 ファイル 600 行以下
+- [x] `main.swift` が責務別ファイル(設定 / player / パネル UI / フォールバック壁紙 / AppDelegate)に分割され、1 ファイル 600 行程度以下
 - [x] `parseTimeParam` / `youtubeID(from:)` / `sanitizeID` / `watchURL` 構築のユニットテストが存在し `swift test` が全件 pass
 - [x] `.github/workflows/ci.yml` が push / PR で macOS build + test を実行する定義になっている
 - [x] `install.sh` / `release.sh` が SPM ビルドに追従し、従来どおり app bundle を生成できる

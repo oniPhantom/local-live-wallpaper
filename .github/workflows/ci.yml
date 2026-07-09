@@ -5,11 +5,14 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Swift バージョン確認
         run: swift --version
       - name: ビルド
