@@ -1,6 +1,7 @@
 🎥 Live Wallpaper
 
-<img width="1800" height="1110" alt="image" src="https://github.com/user-attachments/assets/080491a6-0d11-4c54-b77f-ccf851c225d2" />
+<img width="2880" height="1776" alt="sample1" src="https://github.com/user-attachments/assets/86e319da-bd46-4441-85cf-9271ca5dac8d" />
+
 
 
 日本語 | [English](README.en.md)
@@ -19,7 +20,7 @@ Chrome拡張機能もあります。
 > `sudo xcode-select -s /Applications/Xcode.app` で切り替えてください
 > (`install.sh` / `release.sh` / `make test` は Xcode があれば自動フォールバックします)。
 
-<img width="1800" height="1138" alt="image" src="https://github.com/user-attachments/assets/f2d8f690-82e2-4db6-aabd-a20d1a12ddfb" />
+<img width="2520" height="1593" alt="sample2" src="https://github.com/user-attachments/assets/41da736e-5ebf-4475-96f9-9db516fc5468" />
 
 
 ## インストール
