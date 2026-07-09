@@ -79,16 +79,15 @@ Sign in to YouTube (recommended — removes ads):
 
 ```bash
 make play
-make play URL="https://www.youtube.com/watch?v=VIDEO_ID"
-make play URL="~/Movies/loop.mp4"   # local video files work too
+make play 'https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID'
+make play URL="~/Movies/loop.mp4"   # URL= form and local video files work too
 make off
 
-# You can also call the CLI directly (takes the URL as a positional argument)
+# You can also call the CLI directly
 ./youtube-wallpaper 'https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID'
 ```
 
-> 💡 Pass the URL to `make play` via `URL=` — `make play <URL>` is interpreted as a
-> target name and fails. Always quote URLs containing `&`.
+> 💡 Always quote URLs containing `&` or `?` (they are otherwise interpreted by the shell).
 
 ## Uninstall
 

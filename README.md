@@ -79,16 +79,15 @@ YouTube にログインする(推奨・広告なしになる):
 
 ```bash
 make play
-make play URL="https://www.youtube.com/watch?v=VIDEO_ID"
-make play URL="~/Movies/loop.mp4"   # ローカル動画ファイルも指定可能
+make play 'https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID'
+make play URL="~/Movies/loop.mp4"   # URL= 形式・ローカル動画ファイルも指定可能
 make off
 
-# make を介さず直接 CLI でも可(こちらは位置引数で渡す)
+# make を介さず直接 CLI でも可
 ./youtube-wallpaper 'https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID'
 ```
 
-> 💡 `make play` は `URL=` を付けて渡してください(`make play <URL>` はターゲット名と
-> 解釈されエラーになります)。また URL に `&` を含む場合は必ず引用符で囲んでください。
+> 💡 URL に `&` や `?` を含む場合は必ず引用符で囲んでください(シェルに解釈されるため)。
 
 ## アンインストール
 
