@@ -1,0 +1,128 @@
+# v* タグ push で universal ビルド → app bundle → zip → GitHub Release を自動作成する。
+#
+# 署名 secrets(docs/RELEASING.md 参照)が設定されていれば Developer ID 署名 + 公証、
+# なければ ad-hoc 署名で続行し、Release ノートに Gatekeeper 警告の注記を入れる。
+#   - MACOS_CERTIFICATE_P12      : Developer ID Application 証明書 (.p12) の base64
+#   - MACOS_CERTIFICATE_PASSWORD : p12 のパスワード
+#   - NOTARY_APPLE_ID / NOTARY_TEAM_ID / NOTARY_PASSWORD : 公証用 (App 用パスワード)
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: タグと Info.plist のバージョン整合を確認
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          plist_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Sources/LiveWallpaper/Info.plist)"
+          if [ "$tag_version" != "$plist_version" ]; then
+            echo "::error::タグ v${tag_version} と Info.plist の CFBundleShortVersionString (${plist_version}) が一致しません。docs/RELEASING.md の手順でバージョンを更新してください。" >&2
+            exit 1
+          fi
+          echo "VERSION=${tag_version}" >> "$GITHUB_ENV"
+
+      - name: 署名 secrets の有無を判定
+        id: signing
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -n "$CERT_P12" ] && [ -n "$CERT_PASSWORD" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "NOTE: 署名 secrets 未設定のため ad-hoc 署名でビルドします"
+          fi
+
+      - name: Developer ID 証明書を一時キーチェーンへインポート
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -s "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$identity" ]; then
+            echo "::error::キーチェーンに Developer ID Application 証明書が見つかりません" >&2
+            exit 1
+          fi
+          echo "CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: notarytool プロファイルを登録
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          if [ -n "$NOTARY_APPLE_ID" ] && [ -n "$NOTARY_TEAM_ID" ] && [ -n "$NOTARY_PASSWORD" ]; then
+            xcrun notarytool store-credentials live-wallpaper-ci \
+              --apple-id "$NOTARY_APPLE_ID" \
+              --team-id "$NOTARY_TEAM_ID" \
+              --password "$NOTARY_PASSWORD"
+            echo "NOTARY_PROFILE=live-wallpaper-ci" >> "$GITHUB_ENV"
+          else
+            echo "NOTE: 公証 secrets 未設定のため公証はスキップします(署名のみ)"
+          fi
+
+      - name: ビルド(universal・署名・zip 作成)
+        env:
+          ALLOW_ADHOC: ${{ steps.signing.outputs.signed == 'true' && '0' || '1' }}
+        run: ./scripts/release.sh
+
+      - name: 成果物をリネーム
+        run: |
+          mv dist/LiveWallpaper.zip "dist/LiveWallpaper-${VERSION}.zip"
+          shasum -a 256 "dist/LiveWallpaper-${VERSION}.zip" | tee "dist/LiveWallpaper-${VERSION}.zip.sha256"
+
+      - name: リリースノートを生成
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          {
+            if [ "$SIGNED" = "true" ]; then
+              if [ -n "${NOTARY_PROFILE:-}" ]; then
+                echo "Developer ID 署名・公証済みの universal ビルド (arm64 + x86_64) です。"
+              else
+                echo "Developer ID 署名済み(公証なし)の universal ビルド (arm64 + x86_64) です。"
+              fi
+            else
+              echo "> [!WARNING]"
+              echo "> この zip は **ad-hoc 署名**(Developer ID 署名・公証なし)のため、初回起動時に Gatekeeper の警告が出ます。"
+              echo "> ローカルビルド(署名不要)でのインストールを推奨します:"
+              echo "> \`\`\`bash"
+              echo "> /bin/zsh -c \"\$(curl -fsSL https://raw.githubusercontent.com/oniPhantom/local-live-wallpaper/main/scripts/bootstrap.sh)\""
+              echo "> \`\`\`"
+            fi
+            echo ""
+            echo "Chrome 拡張から操作する場合は Native Messaging host の manifest 設置が必要です(README 参照)。"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+      - name: GitHub Release を作成
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ runner.temp }}/release-notes.md
+          generate_release_notes: true
+          files: |
+            dist/LiveWallpaper-*.zip
+            dist/LiveWallpaper-*.zip.sha256

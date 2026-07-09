@@ -1,0 +1,164 @@
+# Live Wallpaper
+
+[日本語](README.md) | English
+
+A tool that plays YouTube videos and playlists as your macOS desktop wallpaper.
+Control it from the Chrome extension's "Set as wallpaper" button, the menu bar, or the on-desktop control panel.
+
+- 🖥 Plays the YouTube watch page as-is (no ads when signed in with Premium)
+- 🖱 One-click wallpaper from any YouTube page in Chrome (playlists supported)
+- 🎛 Control panel: play by URL, pick playlists from your signed-in account, sign in, play/pause, skip forward/back, volume, seek, quality, restore normal wallpaper, time display (draggable)
+- 🎞 Local video files (mp4 / mov / m4v) loop as wallpaper too (no YouTube dependency, works offline)
+- 🔋 Auto-pauses while the screen is locked, fully covered, on battery power, or in Low Power Mode
+- 🛟 Falls back to a built-in animated wallpaper on playback failure and retries automatically
+
+> ⚠️ This tool is intended for personal use. It modifies how the YouTube page
+> is displayed to show only the video, so use it at your own risk.
+
+## Requirements
+
+- macOS 13 or later (Apple Silicon / Intel)
+- Xcode Command Line Tools (`xcode-select --install`)
+- Google Chrome (if you want to control it from the extension)
+
+## Quick Install (one command)
+
+```bash
+/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/oniPhantom/local-live-wallpaper/main/scripts/bootstrap.sh)"
+```
+
+This clones the repo to `~/local-live-wallpaper` and builds and installs it automatically.
+**Because it builds on your own Mac, no code signing or notarization (Apple Developer Program) is required.**
+
+## Install with Homebrew
+
+You can also install the prebuilt zip from GitHub Releases via Homebrew Cask
+(available once the tap and a release are published; see [docs/RELEASING.md](docs/RELEASING.md)):
+
+```bash
+brew tap oniPhantom/tap
+brew install --cask live-wallpaper
+```
+
+If the release zip is not signed and notarized, Gatekeeper will warn on first
+launch; in that case the local build above is recommended.
+
+## Manual Setup
+
+```bash
+git clone https://github.com/oniPhantom/local-live-wallpaper.git
+cd local-live-wallpaper
+
+# Build and install to /Applications (also sets up the Native Messaging host)
+./scripts/install.sh
+```
+
+Load the Chrome extension (if you want to control it from the extension):
+
+1. Open `chrome://extensions` and turn on "Developer mode" in the top right
+2. Click "Load unpacked" and select the `chrome-extension/` folder
+   (the extension ID is pinned by the `key` in the manifest, so no extra setup is needed)
+
+Sign in to YouTube (recommended — removes ads):
+
+1. Click the ▶ icon in the menu bar → "Sign in to YouTube…"
+2. Sign in in the window that opens (Cmd+C / Cmd+V work) and close it
+
+## Usage
+
+- **From Chrome**: the "🖥 Set as wallpaper" button in the bottom right of YouTube
+  video/playlist pages, or the extension icon's popup in the toolbar
+- **Menu bar**: playback controls, panel visibility, monitor settings, display mode,
+  sign-in (with sign-in status display), and a launch-at-login toggle
+- **Global hotkey**: ⌃⌥P toggles play/pause (works even while other apps are focused)
+- **Control panel** (bottom left of the desktop, draggable): play/pause, previous/next,
+  direct URL input, playlist selection from your signed-in account, sign-in, volume, seek, quality, current/total time, restore normal wallpaper
+- **Local videos**: enter an mp4 / mov / m4v path (`~/Movies/loop.mp4` or a `file://` URL)
+  in the panel's URL field or on the CLI to loop a local file
+- **CLI**:
+
+```bash
+make play
+make play URL="https://www.youtube.com/watch?v=VIDEO_ID"
+make play URL="~/Movies/loop.mp4"   # local video files work too
+make off
+
+# You can also call the CLI directly (takes the URL as a positional argument)
+./youtube-wallpaper 'https://www.youtube.com/watch?v=VIDEO_ID&list=PLAYLIST_ID'
+```
+
+> 💡 Pass the URL to `make play` via `URL=` — `make play <URL>` is interpreted as a
+> target name and fails. Always quote URLs containing `&`.
+
+## Uninstall
+
+```bash
+./scripts/uninstall.sh                 # remove everything (including settings and login data)
+./scripts/uninstall.sh --keep-settings # keep settings
+```
+
+Remove the Chrome extension manually from chrome://extensions.
+
+## Display and Behavior Settings
+
+| Menu bar item | Description |
+|---|---|
+| Largest monitor only | Smaller monitors keep their normal desktop instead of the wallpaper |
+| Crop to fill screen | OFF (default) = show the whole video (FullHD fits vertically with black bars) / ON = crop to fill the screen |
+| Show control panel | Toggle the panel's visibility |
+| Launch at login | Automatically start the app at login (registered/unregistered via `SMAppService`) |
+| Clear login data | Wipe all WebKit cookies (also resets a stuck bot check) |
+
+## Command Reference (Native Messaging)
+
+Besides the extension, you can control the app by sending JSON with a 4-byte
+length prefix to `/Applications/LiveWallpaper.app/Contents/MacOS/native-host`.
+
+```jsonc
+{ "type": "play", "url": "https://www.youtube.com/watch?v=...", "videoIds": ["id1", "id2"] }
+{ "type": "off" }
+{ "type": "pause" }      // toggle play / pause
+{ "type": "next" }
+{ "type": "previous" }
+{ "type": "seek", "percent": 0.42 }
+{ "type": "volume", "value": 35 }
+{ "type": "subtitles", "enabled": false }
+{ "type": "screens", "largestOnly": true }
+{ "type": "quality", "value": "hd1080" }    // auto/small/medium/large/hd720/hd1080/hd1440/hd2160
+{ "type": "status" }                        // returns the current state
+{ "type": "login" }                         // opens the sign-in window
+```
+
+## How It Works
+
+- The macOS app shows the YouTube watch page in a WKWebView inside a
+  desktop-level window and injects CSS/JS to hide the page UI, leaving only the video
+- The actual rendered position of the video is read every second, and the WKWebView's
+  layer transform fits it to the screen
+- Local video files (mp4 / mov / m4v) are looped with `AVPlayerLayer`
+  (no YouTube dependency, works offline)
+- Chrome extension → Native Messaging host → Distributed Notification controls the app
+- All settings live as plain files in `~/Library/Application Support/LiveWallpaper/`
+
+## Known Limitations
+
+- When not signed in, YouTube may flag playback as bot traffic
+  (the automatic fallback and retry wait for recovery; signing in almost entirely avoids it)
+- Videos that cannot be watched — non-embeddable videos, unlisted-recording live streams, etc. — cannot be played
+- The control panel's playlist picker shows up to **50** saved playlists from the signed-in account
+- Continuously decoding full-screen video uses a fair amount of power
+  (auto-pauses on battery by default)
+
+## Distribution Build (for developers)
+
+Distributing to other Macs requires Developer ID signing and notarization:
+
+```bash
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE=your-profile \
+./scripts/release.sh   # produces a universal binary (arm64 + x86_64) in dist/
+```
+
+## License
+
+[MIT](LICENSE) / [Privacy Policy](docs/PRIVACY.md)
