@@ -64,6 +64,7 @@ final class ProgressBar: NSView {
 private final class ResizeHandleView: NSView {
     var onDraggingChanged: ((Bool) -> Void)?
     private let iconView = NSImageView()
+    private let labelView = NSTextField(labelWithString: "サイズ変更")
     private var startFrame: NSRect?
     private var startPoint: NSPoint?
     private var isHovered = false {
@@ -88,11 +89,20 @@ private final class ResizeHandleView: NSView {
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.setAccessibilityElement(false)
         addSubview(iconView)
+
+        labelView.font = .systemFont(ofSize: 10, weight: .semibold)
+        labelView.textColor = Self.accentColor
+        labelView.translatesAutoresizingMaskIntoConstraints = false
+        labelView.setAccessibilityElement(false)
+        addSubview(labelView)
         NSLayoutConstraint.activate([
-            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 14),
-            iconView.heightAnchor.constraint(equalToConstant: 14),
+            iconView.widthAnchor.constraint(equalToConstant: 12),
+            iconView.heightAnchor.constraint(equalToConstant: 12),
+            labelView.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 4),
+            labelView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labelView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
         ])
 
         addTrackingArea(NSTrackingArea(
@@ -343,7 +353,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 30)]
+        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 86)]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -354,7 +364,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         NSLayoutConstraint.activate([
             resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
             resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
-            resizeHandle.widthAnchor.constraint(equalToConstant: 28),
+            resizeHandle.widthAnchor.constraint(equalToConstant: 84),
             resizeHandle.heightAnchor.constraint(equalToConstant: 28),
         ])
     }
@@ -531,7 +541,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
+        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 86)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
