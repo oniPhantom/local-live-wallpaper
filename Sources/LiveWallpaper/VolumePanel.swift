@@ -63,8 +63,6 @@ final class ProgressBar: NSView {
 
 private final class ResizeHandleView: NSView {
     var onDraggingChanged: ((Bool) -> Void)?
-    private let iconView = NSImageView()
-    private let labelView = NSTextField(labelWithString: "サイズ変更")
     private var startFrame: NSRect?
     private var startPoint: NSPoint?
     private var isHovered = false {
@@ -82,29 +80,6 @@ private final class ResizeHandleView: NSView {
         setAccessibilityLabel("パネルサイズを変更")
         setAccessibilityHelp("右下のハンドルをドラッグして幅と高さを変更")
 
-        iconView.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold))
-        iconView.contentTintColor = Self.accentColor
-        iconView.imageScaling = .scaleProportionallyDown
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.setAccessibilityElement(false)
-        addSubview(iconView)
-
-        labelView.font = .systemFont(ofSize: 10, weight: .semibold)
-        labelView.textColor = Self.accentColor
-        labelView.translatesAutoresizingMaskIntoConstraints = false
-        labelView.setAccessibilityElement(false)
-        addSubview(labelView)
-        NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 12),
-            iconView.heightAnchor.constraint(equalToConstant: 12),
-            labelView.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 4),
-            labelView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            labelView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-        ])
-
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
@@ -117,12 +92,22 @@ private final class ResizeHandleView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6)
-        Self.accentColor.withAlphaComponent(isHovered ? 0.34 : 0.20).setFill()
-        box.fill()
-        Self.accentColor.withAlphaComponent(isHovered ? 1 : 0.76).setStroke()
-        box.lineWidth = 1.5
-        box.stroke()
+        if isHovered {
+            Self.accentColor.withAlphaComponent(0.16).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6).fill()
+        }
+
+        let grip = NSBezierPath()
+        grip.move(to: NSPoint(x: 19, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 9))
+        grip.move(to: NSPoint(x: 14, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 14))
+        grip.move(to: NSPoint(x: 9, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 19))
+        grip.lineWidth = 1.8
+        grip.lineCapStyle = .round
+        Self.accentColor.withAlphaComponent(0.88).setStroke()
+        grip.stroke()
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -353,7 +338,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 86)]
+        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 30)]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -364,7 +349,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         NSLayoutConstraint.activate([
             resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
             resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
-            resizeHandle.widthAnchor.constraint(equalToConstant: 84),
+            resizeHandle.widthAnchor.constraint(equalToConstant: 28),
             resizeHandle.heightAnchor.constraint(equalToConstant: 28),
         ])
     }
@@ -541,7 +526,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 86)], height: 24, spacing: 6)
+        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
