@@ -52,7 +52,7 @@ git clone https://github.com/oniPhantom/local-live-wallpaper.git
 cd local-live-wallpaper
 
 # ビルドして /Applications へインストール(Native Messaging host 設定も自動)
-./scripts/install.sh
+make install
 ```
 
 Chrome 拡張を読み込む(拡張から操作したい場合):
@@ -94,8 +94,8 @@ make off
 ## アンインストール
 
 ```bash
-./scripts/uninstall.sh                 # 全削除(設定・ログイン情報含む)
-./scripts/uninstall.sh --keep-settings # 設定は残す
+make uninstall                         # 全削除(設定・ログイン情報含む)
+./scripts/uninstall.sh --keep-settings # 設定を残す場合
 ```
 
 Chrome 拡張は chrome://extensions から手動で削除してください。

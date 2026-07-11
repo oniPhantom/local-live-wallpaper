@@ -58,7 +58,7 @@ git clone https://github.com/oniPhantom/local-live-wallpaper.git
 cd local-live-wallpaper
 
 # Build and install to /Applications (also sets up the Native Messaging host)
-./scripts/install.sh
+make install
 ```
 
 Load the Chrome extension (if you want to control it from the extension):
@@ -100,7 +100,7 @@ make off
 ## Uninstall
 
 ```bash
-./scripts/uninstall.sh                 # remove everything (including settings and login data)
+make uninstall                         # remove everything (including settings and login data)
 ./scripts/uninstall.sh --keep-settings # keep settings
 ```
 
