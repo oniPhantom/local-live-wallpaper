@@ -253,7 +253,7 @@ extension AppDelegate {
     }
 
     @objc private func panelMoved(_ notification: Notification) {
-        guard let panel = notification.object as? VolumePanel else {
+        guard let panel = notification.object as? VolumePanel, !panel.isResizing else {
             return
         }
         WallpaperSource.savePanelOrigin(panel.frame.origin)

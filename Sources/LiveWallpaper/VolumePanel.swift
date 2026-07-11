@@ -61,7 +61,62 @@ final class ProgressBar: NSView {
     }
 }
 
-final class VolumePanel: NSPanel {
+private final class ResizeHandleView: NSView {
+    var onDraggingChanged: ((Bool) -> Void)?
+    private var startFrame: NSRect?
+    private var startPoint: NSPoint?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.handle)
+        setAccessibilityLabel("パネルサイズを変更")
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 0.72).setStroke()
+        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 3, dy: 3), xRadius: 2, yRadius: 2)
+        box.lineWidth = 1.5
+        box.stroke()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        onDraggingChanged?(true)
+        startFrame = window.frame
+        startPoint = window.convertPoint(toScreen: event.locationInWindow)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window, let startFrame, let startPoint else { return }
+        let point = window.convertPoint(toScreen: event.locationInWindow)
+        let width = min(window.contentMaxSize.width, max(window.contentMinSize.width, startFrame.width + point.x - startPoint.x))
+        let height = min(window.contentMaxSize.height, max(window.contentMinSize.height, startFrame.height - point.y + startPoint.y))
+        let frame = NSRect(x: startFrame.minX, y: startFrame.maxY - height, width: width, height: height)
+        window.setFrame(frame, display: true)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        startFrame = nil
+        startPoint = nil
+        onDraggingChanged?(false)
+    }
+}
+
+final class VolumePanel: NSPanel, NSWindowDelegate {
     var onChange: ((Int) -> Void)?
     var onSeek: ((Double) -> Void)?
     var onTogglePlayback: (() -> Void)?
@@ -83,11 +138,17 @@ final class VolumePanel: NSPanel {
         ("480p", "large"),
     ]
 
-    private let expandedSize = NSSize(width: 360, height: 270)
-    private let collapsedSize = NSSize(width: 360, height: 56)
+    private static let defaultExpandedSize = NSSize(width: 360, height: 270)
+    private static let minimumExpandedSize = NSSize(width: 320, height: 270)
+    private static let maximumExpandedSize = NSSize(width: 640, height: 420)
+    private static let collapsedHeight: CGFloat = 56
     private let root: NSVisualEffectView
     private let expandedStack = NSStackView()
     private let compactStack = NSStackView()
+    private let resizeHandle = ResizeHandleView(frame: .zero)
+    private var expandedStackWidthConstraint: NSLayoutConstraint!
+    private var expandedStackBottomConstraint: NSLayoutConstraint!
+    private var compactStackWidthConstraint: NSLayoutConstraint!
     private let expandedProgressBar = ProgressBar(frame: .zero)
     private let compactProgressBar = ProgressBar(frame: .zero)
     private let playButton = NSButton(frame: .zero)
@@ -109,6 +170,8 @@ final class VolumePanel: NSPanel {
     private var videoControls: [NSControl] = []
     private var isPlayingIcon = false
     private var isCollapsed = false
+    private(set) var isResizing = false
+    private var expandedUserSize = defaultExpandedSize
 
     private static let accentColor = NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 1)
     private static let playingColor = NSColor(calibratedRed: 0.44, green: 0.84, blue: 0.63, alpha: 1)
@@ -121,9 +184,9 @@ final class VolumePanel: NSPanel {
     }
 
     init(volume: Int) {
-        let frame = NSRect(origin: .zero, size: expandedSize)
+        let frame = NSRect(origin: .zero, size: Self.defaultExpandedSize)
         root = NSVisualEffectView(frame: frame)
-        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel, .resizable], backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         isFloatingPanel = true
         level = .floating
@@ -132,6 +195,8 @@ final class VolumePanel: NSPanel {
         isOpaque = false
         hasShadow = true
         isMovableByWindowBackground = true
+        showsResizeIndicator = false
+        preservesContentDuringLiveResize = true
 
         root.material = .hudWindow
         root.blendingMode = .behindWindow
@@ -146,9 +211,11 @@ final class VolumePanel: NSPanel {
 
         configureExpandedUI(volume: volume)
         configureCompactUI()
-        contentMinSize = collapsedSize
-        contentMaxSize = expandedSize
-        setContentSize(expandedSize)
+        configureResizeHandle()
+        contentMinSize = Self.minimumExpandedSize
+        contentMaxSize = Self.maximumExpandedSize
+        setContentSize(Self.defaultExpandedSize)
+        delegate = self
         changed(volumeSlider)
         setSourceURL(WallpaperSource.currentURLString())
         setPlaybackAvailable(false)
@@ -167,16 +234,19 @@ final class VolumePanel: NSPanel {
         volumeSlider.doubleValue = Double(volume)
         expandedStack.orientation = .vertical
         expandedStack.alignment = .width
-        expandedStack.distribution = .fill
+        expandedStack.distribution = .equalSpacing
         expandedStack.spacing = 6
         expandedStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         expandedStack.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(expandedStack)
 
+        expandedStackWidthConstraint = expandedStack.widthAnchor.constraint(equalToConstant: Self.defaultExpandedSize.width - 28)
+        expandedStackBottomConstraint = expandedStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12)
         NSLayoutConstraint.activate([
             expandedStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
+            expandedStackBottomConstraint,
             expandedStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            expandedStack.widthAnchor.constraint(equalToConstant: expandedSize.width - 28),
+            expandedStackWidthConstraint,
         ])
 
         expandedStack.addArrangedSubview(makeHeaderRow())
@@ -199,10 +269,11 @@ final class VolumePanel: NSPanel {
         compactStack.isHidden = true
         root.addSubview(compactStack)
 
+        compactStackWidthConstraint = compactStack.widthAnchor.constraint(equalToConstant: Self.defaultExpandedSize.width - 24)
         NSLayoutConstraint.activate([
             compactStack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             compactStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            compactStack.widthAnchor.constraint(equalToConstant: collapsedSize.width - 24),
+            compactStackWidthConstraint,
             compactStack.heightAnchor.constraint(equalToConstant: 36),
         ])
 
@@ -234,8 +305,20 @@ final class VolumePanel: NSPanel {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton]
+        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 14)]
             .forEach(compactStack.addArrangedSubview)
+    }
+
+    private func configureResizeHandle() {
+        resizeHandle.onDraggingChanged = { [weak self] resizing in self?.isResizing = resizing }
+        resizeHandle.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(resizeHandle)
+        NSLayoutConstraint.activate([
+            resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
+            resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
+            resizeHandle.widthAnchor.constraint(equalToConstant: 16),
+            resizeHandle.heightAnchor.constraint(equalToConstant: 16),
+        ])
     }
 
     private func makeHeaderRow() -> NSView {
@@ -410,7 +493,7 @@ final class VolumePanel: NSPanel {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton], height: 24, spacing: 6)
+        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 14)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
@@ -429,6 +512,12 @@ final class VolumePanel: NSPanel {
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return spacer
+    }
+
+    private func makeFixedSpacer(width: CGFloat) -> NSView {
+        let spacer = NSView()
+        constrain(spacer, width: width)
         return spacer
     }
 
@@ -492,6 +581,17 @@ final class VolumePanel: NSPanel {
         }
         if let height {
             view.heightAnchor.constraint(equalToConstant: height).isActive = true
+        }
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        guard let size = contentView?.bounds.size else { return }
+        expandedStackWidthConstraint.constant = max(0, size.width - 28)
+        compactStackWidthConstraint.constant = max(0, size.width - 24)
+        if isCollapsed {
+            expandedUserSize.width = size.width
+        } else {
+            expandedUserSize = size
         }
     }
 
@@ -641,15 +741,30 @@ final class VolumePanel: NSPanel {
     }
 
     @objc private func toggleCollapsed() {
-        isCollapsed.toggle()
+        if isCollapsed {
+            isCollapsed = false
+            contentMinSize = Self.minimumExpandedSize
+            contentMaxSize = Self.maximumExpandedSize
+        } else {
+            expandedUserSize = contentView?.bounds.size ?? Self.defaultExpandedSize
+            isCollapsed = true
+            expandedStackBottomConstraint.isActive = false
+            contentMinSize = NSSize(width: Self.minimumExpandedSize.width, height: Self.collapsedHeight)
+            contentMaxSize = NSSize(width: Self.maximumExpandedSize.width, height: Self.collapsedHeight)
+        }
         expandedStack.isHidden = isCollapsed
         compactStack.isHidden = !isCollapsed
 
-        let newSize = isCollapsed ? collapsedSize : expandedSize
+        let newSize = isCollapsed
+            ? NSSize(width: expandedUserSize.width, height: Self.collapsedHeight)
+            : expandedUserSize
         var newFrame = frame
         newFrame.size = newSize
         let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         setFrame(newFrame, display: true, animate: animate)
         root.frame = NSRect(origin: .zero, size: newSize)
+        if !isCollapsed {
+            expandedStackBottomConstraint.isActive = true
+        }
     }
 }
