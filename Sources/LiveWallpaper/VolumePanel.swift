@@ -63,15 +63,43 @@ final class ProgressBar: NSView {
 
 private final class ResizeHandleView: NSView {
     var onDraggingChanged: ((Bool) -> Void)?
+    private let iconView = NSImageView()
     private var startFrame: NSRect?
     private var startPoint: NSPoint?
+    private var isHovered = false {
+        didSet { needsDisplay = true }
+    }
+
+    private static let accentColor = NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 1)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        toolTip = "ドラッグしてパネルサイズを変更"
         setAccessibilityElement(true)
         setAccessibilityRole(.handle)
         setAccessibilityLabel("パネルサイズを変更")
+        setAccessibilityHelp("右下のハンドルをドラッグして幅と高さを変更")
+
+        iconView.image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold))
+        iconView.contentTintColor = Self.accentColor
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setAccessibilityElement(false)
+        addSubview(iconView)
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 14),
+            iconView.heightAnchor.constraint(equalToConstant: 14),
+        ])
+
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self
+        ))
     }
 
     required init?(coder: NSCoder) {
@@ -79,10 +107,20 @@ private final class ResizeHandleView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 0.72).setStroke()
-        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 3, dy: 3), xRadius: 2, yRadius: 2)
+        let box = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6)
+        Self.accentColor.withAlphaComponent(isHovered ? 0.34 : 0.20).setFill()
+        box.fill()
+        Self.accentColor.withAlphaComponent(isHovered ? 1 : 0.76).setStroke()
         box.lineWidth = 1.5
         box.stroke()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
     }
 
     override func resetCursorRects() {
@@ -305,7 +343,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 14)]
+        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 30)]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -316,8 +354,8 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         NSLayoutConstraint.activate([
             resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
             resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
-            resizeHandle.widthAnchor.constraint(equalToConstant: 16),
-            resizeHandle.heightAnchor.constraint(equalToConstant: 16),
+            resizeHandle.widthAnchor.constraint(equalToConstant: 28),
+            resizeHandle.heightAnchor.constraint(equalToConstant: 28),
         ])
     }
 
@@ -493,7 +531,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 14)], height: 24, spacing: 6)
+        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
