@@ -93,14 +93,16 @@ private final class ResizeHandleView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let grip = NSBezierPath()
-        grip.move(to: NSPoint(x: 15, y: 5))
-        grip.line(to: NSPoint(x: 23, y: 13))
-        grip.move(to: NSPoint(x: 11, y: 5))
-        grip.line(to: NSPoint(x: 23, y: 17))
-        grip.lineWidth = 1.5
-        grip.lineCapStyle = .round
-        (isHovered ? youtubeAccentColor.withAlphaComponent(0.9) : NSColor(calibratedWhite: 1, alpha: 0.38)).setStroke()
-        grip.stroke()
+        [
+            NSRect(x: 13, y: 7, width: 2, height: 2),
+            NSRect(x: 17, y: 7, width: 2, height: 2),
+            NSRect(x: 21, y: 7, width: 2, height: 2),
+            NSRect(x: 17, y: 11, width: 2, height: 2),
+            NSRect(x: 21, y: 11, width: 2, height: 2),
+            NSRect(x: 21, y: 15, width: 2, height: 2),
+        ].forEach { grip.appendOval(in: $0) }
+        (isHovered ? youtubeAccentColor.withAlphaComponent(0.9) : NSColor(calibratedWhite: 1, alpha: 0.38)).setFill()
+        grip.fill()
     }
 
     override func mouseEntered(with event: NSEvent) {
