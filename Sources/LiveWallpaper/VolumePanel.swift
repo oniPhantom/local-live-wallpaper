@@ -1,6 +1,8 @@
 import Cocoa
 import LiveWallpaperCore
 
+private let youtubeAccentColor = NSColor(calibratedRed: 1.0, green: 0.15, blue: 0.12, alpha: 1)
+
 final class ProgressBar: NSView {
     var onSeek: ((Double) -> Void)?
     var isEnabled = true {
@@ -29,7 +31,7 @@ final class ProgressBar: NSView {
         NSBezierPath(roundedRect: track, xRadius: 4, yRadius: 4).fill()
 
         let fill = NSRect(x: track.minX, y: track.minY, width: track.width * progress, height: track.height)
-        NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 0.98).setFill()
+        youtubeAccentColor.withAlphaComponent(0.98).setFill()
         NSBezierPath(roundedRect: fill, xRadius: 4, yRadius: 4).fill()
 
         let knobX = track.minX + track.width * progress
@@ -69,8 +71,6 @@ private final class ResizeHandleView: NSView {
         didSet { needsDisplay = true }
     }
 
-    private static let accentColor = NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 1)
-
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -93,20 +93,20 @@ private final class ResizeHandleView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if isHovered {
-            Self.accentColor.withAlphaComponent(0.16).setFill()
+            youtubeAccentColor.withAlphaComponent(0.16).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6).fill()
         }
 
         let grip = NSBezierPath()
-        grip.move(to: NSPoint(x: 19, y: 5))
-        grip.line(to: NSPoint(x: 23, y: 9))
-        grip.move(to: NSPoint(x: 14, y: 5))
-        grip.line(to: NSPoint(x: 23, y: 14))
-        grip.move(to: NSPoint(x: 9, y: 5))
-        grip.line(to: NSPoint(x: 23, y: 19))
+        grip.move(to: NSPoint(x: 17, y: 7))
+        grip.line(to: NSPoint(x: 21, y: 11))
+        grip.move(to: NSPoint(x: 12, y: 7))
+        grip.line(to: NSPoint(x: 21, y: 16))
+        grip.move(to: NSPoint(x: 7, y: 7))
+        grip.line(to: NSPoint(x: 21, y: 21))
         grip.lineWidth = 1.8
         grip.lineCapStyle = .round
-        Self.accentColor.withAlphaComponent(0.88).setStroke()
+        youtubeAccentColor.withAlphaComponent(0.88).setStroke()
         grip.stroke()
     }
 
@@ -206,7 +206,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private(set) var isResizing = false
     private var expandedUserSize = defaultExpandedSize
 
-    private static let accentColor = NSColor(calibratedRed: 1.0, green: 0.71, blue: 0.33, alpha: 1)
+    private static let accentColor = youtubeAccentColor
     private static let playingColor = NSColor(calibratedRed: 0.44, green: 0.84, blue: 0.63, alpha: 1)
     private static let dangerColor = NSColor(calibratedRed: 1.0, green: 0.40, blue: 0.36, alpha: 0.95)
     private static let primaryTextColor = NSColor(calibratedWhite: 1, alpha: 0.94)
