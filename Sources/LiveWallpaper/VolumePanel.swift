@@ -93,20 +93,20 @@ private final class ResizeHandleView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         if isHovered {
-            youtubeAccentColor.withAlphaComponent(0.16).setFill()
+            youtubeAccentColor.withAlphaComponent(0.12).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 6, yRadius: 6).fill()
         }
 
         let grip = NSBezierPath()
-        grip.move(to: NSPoint(x: 17, y: 7))
-        grip.line(to: NSPoint(x: 21, y: 11))
-        grip.move(to: NSPoint(x: 12, y: 7))
-        grip.line(to: NSPoint(x: 21, y: 16))
-        grip.move(to: NSPoint(x: 7, y: 7))
-        grip.line(to: NSPoint(x: 21, y: 21))
-        grip.lineWidth = 1.8
+        grip.move(to: NSPoint(x: 19, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 9))
+        grip.move(to: NSPoint(x: 15, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 13))
+        grip.move(to: NSPoint(x: 11, y: 5))
+        grip.line(to: NSPoint(x: 23, y: 17))
+        grip.lineWidth = 1.5
         grip.lineCapStyle = .round
-        youtubeAccentColor.withAlphaComponent(0.88).setStroke()
+        youtubeAccentColor.withAlphaComponent(isHovered ? 0.9 : 0.65).setStroke()
         grip.stroke()
     }
 
