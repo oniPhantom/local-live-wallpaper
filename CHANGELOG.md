@@ -16,9 +16,10 @@
   - 挙動を変えない修正 = パッチを上げる
 - **タグ**: `v<version>`(例: `v0.2.0`)。タグ push で GitHub Release が自動作成される
   (`.github/workflows/release.yml`、手順は [docs/RELEASING.md](docs/RELEASING.md))
-- 現状はアプリ 0.1.0 / 拡張 0.2.0 とずれているため、次回リリースで 3 者を統一する
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-07-13
 
 ### Added
 
@@ -48,6 +49,8 @@
 
 ### Changed
 
+- 操作パネルを再生・シーク中心に再編し、コンパクト表示と右下ドラッグによる
+  パネルサイズ変更を追加
 - `main.swift`(約 2,100 行)を責務別ファイル(AppDelegate / player /
   パネル UI / フォールバック壁紙 ほか)へ分割
 - `install.sh` / `release.sh` を SPM ビルドへ追従(app bundle の生成方法は従来どおり)
@@ -72,5 +75,6 @@
 - 壁紙 CLI の make ターゲット(`make play` / `make off`)
 
 <!-- 0.1.0 は git タグを打っていないため比較リンクは省略(次回リリースからタグ運用) -->
-[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/commits/main
+[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/oniPhantom/local-live-wallpaper/releases/tag/v1.0.0
 [0.1.0]: https://github.com/oniPhantom/local-live-wallpaper/commits/main
