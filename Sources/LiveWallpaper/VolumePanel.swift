@@ -94,12 +94,12 @@ private final class ResizeHandleView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let grip = NSBezierPath()
         [
+            NSRect(x: 5, y: 7, width: 2, height: 2),
+            NSRect(x: 9, y: 7, width: 2, height: 2),
             NSRect(x: 13, y: 7, width: 2, height: 2),
-            NSRect(x: 17, y: 7, width: 2, height: 2),
-            NSRect(x: 21, y: 7, width: 2, height: 2),
-            NSRect(x: 17, y: 11, width: 2, height: 2),
-            NSRect(x: 21, y: 11, width: 2, height: 2),
-            NSRect(x: 21, y: 15, width: 2, height: 2),
+            NSRect(x: 9, y: 11, width: 2, height: 2),
+            NSRect(x: 13, y: 11, width: 2, height: 2),
+            NSRect(x: 13, y: 15, width: 2, height: 2),
         ].forEach { grip.appendOval(in: $0) }
         (isHovered ? youtubeAccentColor.withAlphaComponent(0.9) : NSColor(calibratedWhite: 1, alpha: 0.38)).setFill()
         grip.fill()
@@ -333,7 +333,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 30)]
+        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -344,8 +344,8 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         NSLayoutConstraint.activate([
             resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
             resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
-            resizeHandle.widthAnchor.constraint(equalToConstant: 28),
-            resizeHandle.heightAnchor.constraint(equalToConstant: 28),
+            resizeHandle.widthAnchor.constraint(equalToConstant: 20),
+            resizeHandle.heightAnchor.constraint(equalToConstant: 20),
         ])
     }
 
@@ -521,7 +521,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
+        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 14)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
@@ -780,19 +780,47 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             contentMinSize = NSSize(width: Self.minimumExpandedSize.width, height: Self.collapsedHeight)
             contentMaxSize = NSSize(width: Self.maximumExpandedSize.width, height: Self.collapsedHeight)
         }
-        expandedStack.isHidden = isCollapsed
-        compactStack.isHidden = !isCollapsed
 
         let newSize = isCollapsed
             ? NSSize(width: expandedUserSize.width, height: Self.collapsedHeight)
             : expandedUserSize
-        var newFrame = frame
-        newFrame.size = newSize
-        let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        setFrame(newFrame, display: true, animate: animate)
-        root.frame = NSRect(origin: .zero, size: newSize)
-        if !isCollapsed {
-            expandedStackBottomConstraint.isActive = true
+        // 上端を固定したまま伸縮し、画面外にはみ出す場合だけ位置を補正する
+        var newFrame = NSRect(x: frame.minX, y: frame.maxY - newSize.height, width: newSize.width, height: newSize.height)
+        if let visible = (screen ?? NSScreen.main)?.visibleFrame {
+            newFrame.origin.y = max(visible.minY, min(newFrame.origin.y, visible.maxY - newFrame.height))
         }
+
+        let showStack = isCollapsed ? compactStack : expandedStack
+        let hideStack = isCollapsed ? expandedStack : compactStack
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            hideStack.isHidden = true
+            showStack.alphaValue = 1
+            showStack.isHidden = false
+            setFrame(newFrame, display: true)
+            if !isCollapsed {
+                expandedStackBottomConstraint.isActive = true
+            }
+            return
+        }
+
+        showStack.alphaValue = 0
+        showStack.isHidden = false
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.24
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().setFrame(newFrame, display: true)
+            hideStack.animator().alphaValue = 0
+            showStack.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            guard let self else { return }
+            // アニメーション中に再トグルされた場合も現在の状態を基準に片付ける
+            let stackToHide = self.isCollapsed ? self.expandedStack : self.compactStack
+            stackToHide.isHidden = true
+            stackToHide.alphaValue = 1
+            if !self.isCollapsed {
+                self.expandedStackBottomConstraint.isActive = true
+            }
+        })
     }
 }
