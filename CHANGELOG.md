@@ -19,6 +19,15 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-14
+
+### Fixed
+
+- 操作パネル: 折りたたみ時の右端の余白を解消し、展開ボタンを左右対称の
+  マージンで右端に揃えた(リサイズハンドルは 20px に縮小して重なりを回避)
+- 操作パネル: 開閉時のアニメーションを改善。ウィンドウの伸縮とコンテンツの
+  クロスフェードを同期し、上端固定で開閉ボタン付近にバーが留まるようにした
+
 ## [1.0.0] - 2026-07-13
 
 ### Added
@@ -75,6 +84,7 @@
 - 壁紙 CLI の make ターゲット(`make play` / `make off`)
 
 <!-- 0.1.0 は git タグを打っていないため比較リンクは省略(次回リリースからタグ運用) -->
-[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/oniPhantom/local-live-wallpaper/releases/tag/v1.0.0
 [0.1.0]: https://github.com/oniPhantom/local-live-wallpaper/commits/main
