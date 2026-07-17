@@ -1,4 +1,8 @@
-🎥 Live Wallpaper
+# 🎥 Live Wallpaper
+
+[![CI](https://github.com/oniPhantom/local-live-wallpaper/actions/workflows/ci.yml/badge.svg)](https://github.com/oniPhantom/local-live-wallpaper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/oniPhantom/local-live-wallpaper)](https://github.com/oniPhantom/local-live-wallpaper/releases/latest)
 
 <img width="2880" height="1776" alt="sample1" src="https://github.com/user-attachments/assets/86e319da-bd46-4441-85cf-9271ca5dac8d" />
 
@@ -144,6 +148,12 @@ Chrome 拡張は chrome://extensions から手動で削除してください。
 - ローカル動画ファイル(mp4 / mov / m4v)は `AVPlayerLayer` でループ再生する
 - Chrome 拡張 → Native Messaging host → Distributed Notification でアプリを操作
 
+
+## コントリビュート
+
+バグ報告・機能提案・PR を歓迎します。[コントリビューションガイド](CONTRIBUTING.md)を
+参照してください。参加者は[行動規範](CODE_OF_CONDUCT.md)の遵守をお願いします。
+脆弱性の報告は[セキュリティポリシー](SECURITY.md)へ。
 
 ## ライセンス
 

@@ -1,7 +1,7 @@
-.PHONY: install uninstall play off test
+.PHONY: install uninstall play off test lint
 
 # `make play <URL>` 形式の位置引数。URL= 指定があればそちらを優先する
-PLAY_ARG := $(firstword $(filter-out install uninstall play off test,$(MAKECMDGOALS)))
+PLAY_ARG := $(firstword $(filter-out install uninstall play off test lint,$(MAKECMDGOALS)))
 
 # xcode-select が Command Line Tools を指していると SPM が Package.swift を
 # ビルドできない環境があるため、Xcode があればそちらのツールチェーンを使う
@@ -21,6 +21,9 @@ uninstall:
 
 test:
 	swift test
+
+lint:
+	swiftlint --strict
 
 play:
 	@if [ -n "$(URL)" ]; then \

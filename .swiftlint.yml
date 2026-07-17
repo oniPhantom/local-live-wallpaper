@@ -1,0 +1,23 @@
+# CI では `swiftlint --strict`（warning もエラー扱い）で回すため、
+# 既存コードが通る緩めの閾値から始めている。段階的に厳しくしてよい
+included:
+  - Sources
+  - Tests
+
+disabled_rules:
+  # AppKit の UI コード（AppDelegate / VolumePanel 等）が長くなりがちなため、
+  # サイズ・複雑度系は当面対象外にする
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+
+line_length:
+  # 最長行は複数行文字列リテラル内の注入 JS（LoginWindow.swift）で分割できない。
+  # それを許容しつつ、それ以上の伸長は止める
+  warning: 230
+  ignores_urls: true
+
+identifier_name:
+  # x / y / w / h などの座標・寸法変数を許容する
+  min_length: 1

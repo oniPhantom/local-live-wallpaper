@@ -19,6 +19,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- コミュニティ文書を追加(日英併記): `CONTRIBUTING.md` / `CODE_OF_CONDUCT.md`
+  (Contributor Covenant v2.1)/ `SECURITY.md`
+- README にバッジ(CI / License / Release)とコントリビュートセクションを追加
+- `.github/dependabot.yml`: GitHub Actions の依存を週次で自動更新
+- SwiftLint を導入: `.swiftlint.yml`・`make lint`・CI の lint ジョブ
+
+### Changed
+
+- SwiftLint の自動修正でコレクション末尾のカンマを削除(挙動変更なし)
+
 ## [1.0.0] - 2026-07-13
 
 ### Added

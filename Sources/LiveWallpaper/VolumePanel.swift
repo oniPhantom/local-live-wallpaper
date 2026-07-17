@@ -99,7 +99,7 @@ private final class ResizeHandleView: NSView {
             NSRect(x: 21, y: 7, width: 2, height: 2),
             NSRect(x: 17, y: 11, width: 2, height: 2),
             NSRect(x: 21, y: 11, width: 2, height: 2),
-            NSRect(x: 21, y: 15, width: 2, height: 2),
+            NSRect(x: 21, y: 15, width: 2, height: 2)
         ].forEach { grip.appendOval(in: $0) }
         (isHovered ? youtubeAccentColor.withAlphaComponent(0.9) : NSColor(calibratedWhite: 1, alpha: 0.38)).setFill()
         grip.fill()
@@ -163,7 +163,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         ("1440p", "hd1440"),
         ("1080p", "hd1080"),
         ("720p", "hd720"),
-        ("480p", "large"),
+        ("480p", "large")
     ]
 
     private static let defaultExpandedSize = NSSize(width: 360, height: 270)
@@ -274,7 +274,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             expandedStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             expandedStackBottomConstraint,
             expandedStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            expandedStackWidthConstraint,
+            expandedStackWidthConstraint
         ])
 
         expandedStack.addArrangedSubview(makeHeaderRow())
@@ -302,7 +302,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             compactStack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             compactStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             compactStackWidthConstraint,
-            compactStack.heightAnchor.constraint(equalToConstant: 36),
+            compactStack.heightAnchor.constraint(equalToConstant: 36)
         ])
 
         configureIconButton(
@@ -345,7 +345,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             resizeHandle.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -3),
             resizeHandle.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: 3),
             resizeHandle.widthAnchor.constraint(equalToConstant: 28),
-            resizeHandle.heightAnchor.constraint(equalToConstant: 28),
+            resizeHandle.heightAnchor.constraint(equalToConstant: 28)
         ])
     }
 
@@ -426,7 +426,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             stateLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             stateLabel.widthAnchor.constraint(equalToConstant: 76),
             controls.centerXAnchor.constraint(equalTo: row.centerXAnchor),
-            controls.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            controls.centerYAnchor.constraint(equalTo: row.centerYAnchor)
         ])
         return row
     }

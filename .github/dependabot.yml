@@ -1,0 +1,8 @@
+# GitHub Actions の依存（SHA ピン留め済み）を週次で更新する。
+# SPM は外部依存ゼロのため対象外
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

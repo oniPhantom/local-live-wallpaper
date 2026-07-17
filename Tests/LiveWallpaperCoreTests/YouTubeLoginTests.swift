@@ -4,11 +4,11 @@ import XCTest
 final class YouTubeLoginTests: XCTestCase {
     func testYouTubeドメインのLOGIN_INFOでログイン済み() {
         XCTAssertTrue(YouTubeLogin.isLoggedIn(cookies: [
-            (name: "LOGIN_INFO", domain: ".youtube.com"),
+            (name: "LOGIN_INFO", domain: ".youtube.com")
         ]))
         XCTAssertTrue(YouTubeLogin.isLoggedIn(cookies: [
             (name: "PREF", domain: ".youtube.com"),
-            (name: "LOGIN_INFO", domain: "www.youtube.com"),
+            (name: "LOGIN_INFO", domain: "www.youtube.com")
         ]))
     }
 
@@ -22,7 +22,7 @@ final class YouTubeLoginTests: XCTestCase {
     func testLOGIN_INFO以外の名前は不一致() {
         XCTAssertFalse(YouTubeLogin.isLoggedIn(cookies: [
             (name: "PREF", domain: ".youtube.com"),
-            (name: "VISITOR_INFO1_LIVE", domain: ".youtube.com"),
+            (name: "VISITOR_INFO1_LIVE", domain: ".youtube.com")
         ]))
         XCTAssertFalse(YouTubeLogin.isLoginCookie(name: "login_info", domain: ".youtube.com"))
     }

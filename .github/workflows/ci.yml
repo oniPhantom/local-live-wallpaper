@@ -19,3 +19,14 @@ jobs:
         run: swift build -c release
       - name: テスト
         run: swift test
+
+  lint:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: SwiftLint
+        # ランナーにプリインストールされている SwiftLint を使う（無ければ brew で導入）
+        run: |
+          command -v swiftlint >/dev/null || brew install swiftlint
+          swiftlint version
+          swiftlint --strict

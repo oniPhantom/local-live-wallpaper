@@ -1,5 +1,9 @@
 # Live Wallpaper
 
+[![CI](https://github.com/oniPhantom/local-live-wallpaper/actions/workflows/ci.yml/badge.svg)](https://github.com/oniPhantom/local-live-wallpaper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/oniPhantom/local-live-wallpaper)](https://github.com/oniPhantom/local-live-wallpaper/releases/latest)
+
 [日本語](README.md) | English
 
 A tool that plays YouTube videos and playlists as your macOS desktop wallpaper.
@@ -165,6 +169,13 @@ CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 NOTARY_PROFILE=your-profile \
 ./scripts/release.sh   # produces a universal binary (arm64 + x86_64) in dist/
 ```
+
+## Contributing
+
+Bug reports, feature requests, and PRs are welcome — see the
+[contributing guide](CONTRIBUTING.en.md). Participants are expected to follow
+the [code of conduct](CODE_OF_CONDUCT.en.md). For vulnerabilities, see the
+[security policy](SECURITY.en.md).
 
 ## License
 

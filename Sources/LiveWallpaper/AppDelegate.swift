@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ("com.apple.screenIsLocked", true),
             ("com.apple.screenIsUnlocked", false),
             ("com.apple.screensaver.didstart", true),
-            ("com.apple.screensaver.didstop", false),
+            ("com.apple.screensaver.didstop", false)
         ]
         for (name, paused) in lockEvents {
             DistributedNotificationCenter.default().addObserver(
@@ -240,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DiagnosticLog.log("playback-failure", [
                 ("event", event),
                 ("code", "\(code)"),
-                ("count", "\(playbackFailureCount)"),
+                ("count", "\(playbackFailureCount)")
             ])
             if playbackFailureCount < 2 {
                 // 30 秒おいて 1 回だけ再試行。短間隔で再ロードを繰り返すと
@@ -278,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DiagnosticLog.log("auto-pause", [
                 ("reason", reason),
                 ("active", "\(active)"),
-                ("reasons", autoPauseReasons.sorted().joined(separator: ",")),
+                ("reasons", autoPauseReasons.sorted().joined(separator: ","))
             ])
         }
         updateAutoPauseState()
