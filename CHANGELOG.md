@@ -26,6 +26,9 @@
 - README にバッジ(CI / License / Release)とコントリビュートセクションを追加
 - `.github/dependabot.yml`: GitHub Actions の依存を週次で自動更新
 - SwiftLint を導入: `.swiftlint.yml`・`make lint`・CI の lint ジョブ
+- README を刷新: ロゴ・タグライン・バッジ(macOS / Swift 追加)のヒーローヘッダー、
+  機能一覧、目次、インストール手順のセクション統合(日英とも)。アプリアイコンを
+  `docs/assets/icon.png` として同梱
 
 ### Changed
 
