@@ -178,7 +178,6 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private var expandedStackBottomConstraint: NSLayoutConstraint!
     private var compactStackWidthConstraint: NSLayoutConstraint!
     private let expandedProgressBar = ProgressBar(frame: .zero)
-    private let compactProgressBar = ProgressBar(frame: .zero)
     private let playButton = NSButton(frame: .zero)
     private let compactPlayButton = NSButton(frame: .zero)
     private let urlField = NSTextField(frame: .zero)
@@ -349,10 +348,6 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         configureTimeLabel(compactDurationLabel, alignment: .right)
         constrain(compactDurationLabel, width: 42)
 
-        compactProgressBar.onSeek = { [weak self] percent in self?.onSeek?(percent) }
-        compactProgressBar.heightAnchor.constraint(equalToConstant: 18).isActive = true
-        compactProgressBar.setContentHuggingPriority(.defaultLow, for: .horizontal)
-
         let expandButton = makeIconButton(
             symbol: "chevron.up",
             size: 11,
@@ -361,7 +356,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, compactProgressBar, compactDurationLabel, expandButton, makeFixedSpacer(width: 30)]
+        [compactPlayButton, compactCurrentTimeLabel, makeSpacer(), compactDurationLabel, expandButton]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -654,7 +649,6 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
 
     func setProgress(_ progress: Double) {
         expandedProgressBar.setProgress(progress)
-        compactProgressBar.setProgress(progress)
     }
 
     func updateStatus(playing: Bool, currentTime: Double, duration: Double) {
@@ -717,7 +711,6 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     func setPlaybackAvailable(_ available: Bool) {
         videoControls.forEach { $0.isEnabled = available }
         expandedProgressBar.isEnabled = available
-        compactProgressBar.isEnabled = available
         if !available {
             setProgress(0)
             [currentTimeLabel, compactCurrentTimeLabel, durationLabel, compactDurationLabel]
@@ -799,6 +792,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         }
         expandedStack.isHidden = isCollapsed
         compactStack.isHidden = !isCollapsed
+        resizeHandle.isHidden = isCollapsed
 
         let newSize = isCollapsed
             ? NSSize(width: expandedUserSize.width, height: Self.collapsedHeight)
