@@ -169,14 +169,13 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private static let defaultExpandedSize = NSSize(width: 372, height: 286)
     private static let minimumExpandedSize = NSSize(width: 340, height: 286)
     private static let maximumExpandedSize = NSSize(width: 640, height: 420)
-    private static let collapsedHeight: CGFloat = 56
+    private static let collapsedSize = NSSize(width: 90, height: 56)
     private let root: NSView
     private let expandedStack = NSStackView()
     private let compactStack = NSStackView()
     private let resizeHandle = ResizeHandleView(frame: .zero)
     private var expandedStackWidthConstraint: NSLayoutConstraint!
     private var expandedStackBottomConstraint: NSLayoutConstraint!
-    private var compactStackWidthConstraint: NSLayoutConstraint!
     private let expandedProgressBar = ProgressBar(frame: .zero)
     private let playButton = NSButton(frame: .zero)
     private let compactPlayButton = NSButton(frame: .zero)
@@ -186,9 +185,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private let loginButton = NSButton(title: "ログイン", target: nil, action: nil)
     private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let currentTimeLabel = NSTextField(labelWithString: "--:--")
-    private let compactCurrentTimeLabel = NSTextField(labelWithString: "--:--")
     private let durationLabel = NSTextField(labelWithString: "--:--")
-    private let compactDurationLabel = NSTextField(labelWithString: "--:--")
     private let stateLabel = NSTextField(labelWithString: "待機中")
     private let valueLabel = NSTextField(labelWithString: "0")
     private let sourceTypeLabel = NSTextField(labelWithString: "YouTube")
@@ -196,7 +193,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private var localSource = false
     private var videoControls: [NSControl] = []
     private var isPlayingIcon = false
-    private var isCollapsed = false
+    private(set) var isCollapsed = false
     private(set) var isResizing = false
     private var expandedUserSize = defaultExpandedSize
 
@@ -319,16 +316,14 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         compactStack.alignment = .centerY
         compactStack.distribution = .fill
         compactStack.spacing = 6
-        compactStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         compactStack.translatesAutoresizingMaskIntoConstraints = false
         compactStack.isHidden = true
         root.addSubview(compactStack)
 
-        compactStackWidthConstraint = compactStack.widthAnchor.constraint(equalToConstant: Self.defaultExpandedSize.width - 24)
         NSLayoutConstraint.activate([
             compactStack.centerYAnchor.constraint(equalTo: root.centerYAnchor),
             compactStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            compactStackWidthConstraint,
+            compactStack.widthAnchor.constraint(equalToConstant: Self.collapsedSize.width - 24),
             compactStack.heightAnchor.constraint(equalToConstant: 36)
         ])
 
@@ -343,11 +338,6 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         constrain(compactPlayButton, width: 32, height: 32)
         videoControls.append(compactPlayButton)
 
-        configureTimeLabel(compactCurrentTimeLabel, alignment: .left)
-        constrain(compactCurrentTimeLabel, width: 42)
-        configureTimeLabel(compactDurationLabel, alignment: .right)
-        constrain(compactDurationLabel, width: 42)
-
         let expandButton = makeIconButton(
             symbol: "chevron.up",
             size: 11,
@@ -356,7 +346,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, compactCurrentTimeLabel, makeSpacer(), compactDurationLabel, expandButton]
+        [compactPlayButton, expandButton]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -625,14 +615,9 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     }
 
     func windowDidResize(_ notification: Notification) {
-        guard let size = contentView?.bounds.size else { return }
+        guard !isCollapsed, let size = contentView?.bounds.size else { return }
         expandedStackWidthConstraint.constant = max(0, size.width - 32)
-        compactStackWidthConstraint.constant = max(0, size.width - 24)
-        if isCollapsed {
-            expandedUserSize.width = size.width
-        } else {
-            expandedUserSize = size
-        }
+        expandedUserSize = size
     }
 
     private static func roundedFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
@@ -665,9 +650,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         let current = Self.formatTime(currentTime)
         let total = duration > 0 ? Self.formatTime(duration) : "--:--"
         currentTimeLabel.stringValue = current
-        compactCurrentTimeLabel.stringValue = current
         durationLabel.stringValue = total
-        compactDurationLabel.stringValue = total
     }
 
     func setSourceURL(_ url: String) {
@@ -713,7 +696,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         expandedProgressBar.isEnabled = available
         if !available {
             setProgress(0)
-            [currentTimeLabel, compactCurrentTimeLabel, durationLabel, compactDurationLabel]
+            [currentTimeLabel, durationLabel]
                 .forEach { $0.stringValue = "--:--" }
             stateLabel.stringValue = "待機中"
             stateLabel.textColor = Self.secondaryTextColor
@@ -780,24 +763,26 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
 
     @objc private func toggleCollapsed() {
         if isCollapsed {
-            isCollapsed = false
             contentMinSize = Self.minimumExpandedSize
             contentMaxSize = Self.maximumExpandedSize
+            isCollapsed = false
         } else {
             expandedUserSize = contentView?.bounds.size ?? Self.defaultExpandedSize
             isCollapsed = true
             expandedStackBottomConstraint.isActive = false
-            contentMinSize = NSSize(width: Self.minimumExpandedSize.width, height: Self.collapsedHeight)
-            contentMaxSize = NSSize(width: Self.maximumExpandedSize.width, height: Self.collapsedHeight)
+            contentMinSize = Self.collapsedSize
+            contentMaxSize = Self.collapsedSize
         }
         expandedStack.isHidden = isCollapsed
         compactStack.isHidden = !isCollapsed
         resizeHandle.isHidden = isCollapsed
 
         let newSize = isCollapsed
-            ? NSSize(width: expandedUserSize.width, height: Self.collapsedHeight)
+            ? Self.collapsedSize
             : expandedUserSize
         var newFrame = frame
+        newFrame.origin.x = frame.maxX - newSize.width
+        newFrame.origin.y = frame.maxY - newSize.height
         newFrame.size = newSize
         let animate = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         setFrame(newFrame, display: true, animate: animate)

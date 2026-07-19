@@ -243,7 +243,7 @@ extension AppDelegate {
         if let saved = WallpaperSource.panelOrigin() {
             // ドラッグで動かした位置を優先(画面外になっていたらデフォルトに戻す)
             let savedFrame = NSRect(origin: saved, size: panel.frame.size)
-            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(savedFrame) }) {
+            if NSScreen.screens.contains(where: { $0.visibleFrame.contains(savedFrame) }) {
                 origin = saved
             }
         }
@@ -253,7 +253,7 @@ extension AppDelegate {
     }
 
     @objc private func panelMoved(_ notification: Notification) {
-        guard let panel = notification.object as? VolumePanel, !panel.isResizing else {
+        guard let panel = notification.object as? VolumePanel, !panel.isResizing, !panel.isCollapsed else {
             return
         }
         WallpaperSource.savePanelOrigin(panel.frame.origin)
