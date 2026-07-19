@@ -19,6 +19,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-19
+
 ### Added
 
 - コミュニティ文書を追加(日英併記): `CONTRIBUTING.md` / `CODE_OF_CONDUCT.md`
@@ -32,6 +34,8 @@
 
 ### Changed
 
+- 操作パネルを macOS 26 の Liquid Glass に対応し、折りたたみ時は再生操作と展開だけの
+  最小表示へ刷新
 - SwiftLint の自動修正でコレクション末尾のカンマを削除(挙動変更なし)
 
 ## [1.0.0] - 2026-07-13
@@ -90,6 +94,7 @@
 - 壁紙 CLI の make ターゲット(`make play` / `make off`)
 
 <!-- 0.1.0 は git タグを打っていないため比較リンクは省略(次回リリースからタグ運用) -->
-[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/oniPhantom/local-live-wallpaper/releases/tag/v1.0.0
 [0.1.0]: https://github.com/oniPhantom/local-live-wallpaper/commits/main
