@@ -204,8 +204,10 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private static let accentColor = youtubeAccentColor
     private static let playingColor = NSColor(calibratedRed: 0.44, green: 0.84, blue: 0.63, alpha: 1)
     private static let dangerColor = NSColor(calibratedRed: 1.0, green: 0.40, blue: 0.36, alpha: 0.95)
-    private static let primaryTextColor = NSColor(calibratedWhite: 1, alpha: 0.94)
-    private static let secondaryTextColor = NSColor(calibratedWhite: 1, alpha: 0.62)
+    private static let primaryTextColor = NSColor(calibratedWhite: 1, alpha: 0.96)
+    private static let secondaryTextColor = NSColor(calibratedWhite: 1, alpha: 0.70)
+    private static let glassSurfaceColor = NSColor(calibratedWhite: 0.02, alpha: 0.24)
+    private static let glassHairlineColor = NSColor(calibratedWhite: 1, alpha: 0.14)
 
     override var canBecomeKey: Bool {
         true
@@ -226,14 +228,17 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         showsResizeIndicator = false
         preservesContentDuringLiveResize = true
 
-        root.material = .hudWindow
+        root.material = .underWindowBackground
         root.blendingMode = .behindWindow
         root.state = .active
+        root.appearance = NSAppearance(named: .vibrantDark)
         root.autoresizingMask = [.width, .height]
         root.wantsLayer = true
-        root.layer?.cornerRadius = 16
+        root.layer?.cornerRadius = 18
+        root.layer?.cornerCurve = .continuous
+        root.layer?.backgroundColor = NSColor(calibratedWhite: 0.02, alpha: 0.28).cgColor
         root.layer?.borderWidth = 1
-        root.layer?.borderColor = Self.accentColor.withAlphaComponent(0.22).cgColor
+        root.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.24).cgColor
         root.layer?.masksToBounds = true
         contentView = root
 
@@ -278,9 +283,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         ])
 
         expandedStack.addArrangedSubview(makeHeaderRow())
-        expandedStack.addArrangedSubview(makeTransportRow())
-        expandedStack.addArrangedSubview(makeTimelineRow())
-        expandedStack.addArrangedSubview(makeVolumeRow())
+        expandedStack.addArrangedSubview(makePlaybackSurface())
         expandedStack.addArrangedSubview(makeSourceHeaderRow())
         expandedStack.addArrangedSubview(makeURLRow())
         expandedStack.addArrangedSubview(makePlaylistRow())
@@ -305,13 +308,12 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             compactStack.heightAnchor.constraint(equalToConstant: 36)
         ])
 
-        configureIconButton(
+        configurePlayButton(
             compactPlayButton,
             symbol: "play.fill",
             size: 16,
             label: "再生",
-            action: #selector(playTapped),
-            tint: Self.accentColor
+            radius: 16
         )
         constrain(compactPlayButton, width: 32, height: 32)
         videoControls.append(compactPlayButton)
@@ -398,13 +400,12 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             label: "前の動画",
             action: #selector(previousTapped)
         )
-        configureIconButton(
+        configurePlayButton(
             playButton,
             symbol: "play.fill",
             size: 20,
             label: "再生",
-            action: #selector(playTapped),
-            tint: Self.accentColor
+            radius: 19
         )
         let nextButton = makeIconButton(
             symbol: "forward.fill",
@@ -429,6 +430,33 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             controls.centerYAnchor.constraint(equalTo: row.centerYAnchor)
         ])
         return row
+    }
+
+    private func makePlaybackSurface() -> NSView {
+        let content = NSStackView(views: [makeTransportRow(), makeTimelineRow(), makeVolumeRow()])
+        content.orientation = .vertical
+        content.alignment = .width
+        content.spacing = 3
+        content.translatesAutoresizingMaskIntoConstraints = false
+
+        let surface = NSView()
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        surface.wantsLayer = true
+        surface.layer?.cornerRadius = 13
+        surface.layer?.cornerCurve = .continuous
+        surface.layer?.backgroundColor = Self.glassSurfaceColor.cgColor
+        surface.layer?.borderWidth = 0.5
+        surface.layer?.borderColor = Self.glassHairlineColor.cgColor
+        surface.addSubview(content)
+
+        NSLayoutConstraint.activate([
+            surface.heightAnchor.constraint(equalToConstant: 100),
+            content.topAnchor.constraint(equalTo: surface.topAnchor, constant: 6),
+            content.bottomAnchor.constraint(equalTo: surface.bottomAnchor, constant: -6),
+            content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 8),
+            content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -8)
+        ])
+        return surface
     }
 
     private func makeTimelineRow() -> NSView {
@@ -459,10 +487,17 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
 
     private func makeSourceHeaderRow() -> NSView {
         let label = makeLabel("ソース", font: Self.roundedFont(ofSize: 10, weight: .semibold), color: Self.secondaryTextColor)
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        return makeRow([label, separator], height: 18, spacing: 8)
+        sourceTypeLabel.font = .systemFont(ofSize: 9, weight: .semibold)
+        sourceTypeLabel.textColor = Self.primaryTextColor
+        sourceTypeLabel.alignment = .center
+        sourceTypeLabel.wantsLayer = true
+        sourceTypeLabel.layer?.cornerRadius = 8
+        sourceTypeLabel.layer?.cornerCurve = .continuous
+        sourceTypeLabel.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.08).cgColor
+        sourceTypeLabel.layer?.borderWidth = 0.5
+        sourceTypeLabel.layer?.borderColor = Self.glassHairlineColor.cgColor
+        constrain(sourceTypeLabel, width: 76, height: 18)
+        return makeRow([label, makeSpacer(), sourceTypeLabel], height: 18, spacing: 8)
     }
 
     private func makeURLRow() -> NSView {
@@ -500,18 +535,15 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         loginButton.target = self
         loginButton.action = #selector(loginTapped)
         loginButton.controlSize = .small
-        loginButton.bezelStyle = .rounded
         loginButton.font = .systemFont(ofSize: 10, weight: .medium)
         loginButton.setAccessibilityLabel("YouTubeログイン")
+        styleGlassButton(loginButton)
         constrain(loginButton, width: 82)
 
         return makeRow([playlistPopUp, refreshPlaylistsButton, loginButton], height: 28, spacing: 6)
     }
 
     private func makeFooterRow() -> NSView {
-        sourceTypeLabel.font = .systemFont(ofSize: 9, weight: .medium)
-        sourceTypeLabel.textColor = Self.secondaryTextColor
-
         let restoreButton = makeTextButton(
             title: "通常壁紙に戻す",
             label: "動画再生を止めて通常壁紙に戻す",
@@ -521,7 +553,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         restoreButton.toolTip = "動画再生を止めて通常壁紙に戻す"
         constrain(restoreButton, width: 112)
         videoControls.append(restoreButton)
-        return makeRow([sourceTypeLabel, makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
+        return makeRow([makeSpacer(), restoreButton, makeFixedSpacer(width: 30)], height: 24, spacing: 6)
     }
 
     private func makeRow(_ views: [NSView], height: CGFloat? = nil, spacing: CGFloat = 6) -> NSStackView {
@@ -559,10 +591,20 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private func makeTextButton(title: String, label: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.controlSize = .small
-        button.bezelStyle = .rounded
         button.font = .systemFont(ofSize: 10, weight: .medium)
         button.setAccessibilityLabel(label)
+        styleGlassButton(button)
         return button
+    }
+
+    private func styleGlassButton(_ button: NSButton) {
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 8
+        button.layer?.cornerCurve = .continuous
+        button.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.10).cgColor
+        button.layer?.borderWidth = 0.5
+        button.layer?.borderColor = Self.glassHairlineColor.cgColor
     }
 
     private func makeIconButton(
@@ -595,6 +637,26 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         button.contentTintColor = tint
         button.toolTip = label
         button.setAccessibilityLabel(label)
+    }
+
+    private func configurePlayButton(
+        _ button: NSButton,
+        symbol: String,
+        size: CGFloat,
+        label: String,
+        radius: CGFloat
+    ) {
+        configureIconButton(button, symbol: symbol, size: size, label: label, action: #selector(playTapped), tint: .white)
+        button.wantsLayer = true
+        button.layer?.cornerRadius = radius
+        button.layer?.cornerCurve = .continuous
+        button.layer?.backgroundColor = Self.accentColor.cgColor
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.28).cgColor
+        button.layer?.shadowColor = Self.accentColor.cgColor
+        button.layer?.shadowOpacity = 0.28
+        button.layer?.shadowRadius = 7
+        button.layer?.shadowOffset = .zero
     }
 
     private func configureTimeLabel(_ label: NSTextField, alignment: NSTextAlignment) {
@@ -645,8 +707,8 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             isPlayingIcon = playing
             let symbol = playing ? "pause.fill" : "play.fill"
             let label = playing ? "一時停止" : "再生"
-            configureIconButton(playButton, symbol: symbol, size: 20, label: label, action: #selector(playTapped), tint: Self.accentColor)
-            configureIconButton(compactPlayButton, symbol: symbol, size: 16, label: label, action: #selector(playTapped), tint: Self.accentColor)
+            configurePlayButton(playButton, symbol: symbol, size: 20, label: label, radius: 19)
+            configurePlayButton(compactPlayButton, symbol: symbol, size: 16, label: label, radius: 16)
         }
         setPlaybackAvailable(true)
         stateLabel.stringValue = playing ? "再生中" : "一時停止"
@@ -699,6 +761,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
 
     func setPlaybackAvailable(_ available: Bool) {
         videoControls.forEach { $0.isEnabled = available }
+        [playButton, compactPlayButton].forEach { $0.alphaValue = available ? 1 : 0.42 }
         expandedProgressBar.isEnabled = available
         compactProgressBar.isEnabled = available
         if !available {
@@ -709,8 +772,8 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             stateLabel.textColor = Self.secondaryTextColor
             if isPlayingIcon {
                 isPlayingIcon = false
-                configureIconButton(playButton, symbol: "play.fill", size: 20, label: "再生", action: #selector(playTapped), tint: Self.accentColor)
-                configureIconButton(compactPlayButton, symbol: "play.fill", size: 16, label: "再生", action: #selector(playTapped), tint: Self.accentColor)
+                configurePlayButton(playButton, symbol: "play.fill", size: 20, label: "再生", radius: 19)
+                configurePlayButton(compactPlayButton, symbol: "play.fill", size: 16, label: "再生", radius: 16)
             }
         }
     }
