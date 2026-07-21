@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="docs/assets/icon.png" width="128" alt="Live Wallpaper" />
-
-# Live Wallpaper
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo.png" />
+  <img src="docs/assets/logo-light.png" width="440" alt="Live Wallpaper" />
+</picture>
 
 **YouTube をそのまま、Mac のライブ壁紙に。**
 
