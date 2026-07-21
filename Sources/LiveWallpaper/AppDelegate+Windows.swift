@@ -290,7 +290,8 @@ extension AppDelegate {
                     self?.volumePanel?.updateStatus(
                         playing: playing,
                         currentTime: (status["currentTime"] as? NSNumber)?.doubleValue ?? 0,
-                        duration: (status["duration"] as? NSNumber)?.doubleValue ?? 0
+                        duration: (status["duration"] as? NSNumber)?.doubleValue ?? 0,
+                        title: status["title"] as? String
                     )
                     // popup が status コマンドで読む実状態(フィット検証用の rect も含む)
                     WallpaperSource.saveState(status)

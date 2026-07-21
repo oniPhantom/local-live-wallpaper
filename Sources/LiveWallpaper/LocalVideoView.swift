@@ -177,7 +177,8 @@ final class LocalVideoView: NSView, WallpaperPlayerView {
             "progress": duration > 0 ? min(1, current / duration) : 0,
             "playing": player.rate > 0,
             "currentTime": current,
-            "duration": duration
+            "duration": duration,
+            "title": (filePath as NSString).lastPathComponent
         ])
     }
 }

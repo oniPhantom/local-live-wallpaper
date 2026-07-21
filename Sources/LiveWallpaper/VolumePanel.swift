@@ -3,6 +3,83 @@ import LiveWallpaperCore
 
 private let youtubeAccentColor = NSColor(calibratedRed: 1.0, green: 0.15, blue: 0.12, alpha: 1)
 
+// 収まる場合は静止表示し、はみ出す場合だけ自動横スクロールするタイトルラベル
+private final class MarqueeLabel: NSView {
+    private let primary = CATextLayer()
+    private let secondary = CATextLayer()
+    private let scroller = CALayer()
+    private static let gap: CGFloat = 32
+    private static let pointsPerSecond: CGFloat = 25
+
+    var text: String = "" {
+        didSet {
+            guard text != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        [primary, secondary].forEach {
+            $0.isWrapped = false
+            scroller.addSublayer($0)
+        }
+        layer?.addSublayer(scroller)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        let scale = window?.backingScaleFactor ?? 2
+        [primary, secondary].forEach { $0.contentsScale = scale }
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        rebuild()
+        CATransaction.commit()
+    }
+
+    private func rebuild() {
+        let attributed = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor(calibratedWhite: 1, alpha: 0.85)
+        ])
+        let textWidth = ceil(attributed.size().width)
+        let lineHeight: CGFloat = 14
+        for textLayer in [primary, secondary] {
+            textLayer.string = attributed
+            textLayer.frame = CGRect(x: 0, y: (bounds.height - lineHeight) / 2, width: textWidth, height: lineHeight)
+        }
+        scroller.frame = bounds
+        scroller.removeAnimation(forKey: "marquee")
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if textWidth > bounds.width, !text.isEmpty, !reduceMotion {
+            // 2枚目を後ろに並べてループが途切れないようにする
+            secondary.isHidden = false
+            secondary.frame.origin.x = textWidth + Self.gap
+            let distance = textWidth + Self.gap
+            let animation = CABasicAnimation(keyPath: "position.x")
+            animation.fromValue = 0
+            animation.toValue = -distance
+            animation.duration = CFTimeInterval(distance / Self.pointsPerSecond)
+            animation.repeatCount = .infinity
+            scroller.add(animation, forKey: "marquee")
+        } else {
+            secondary.isHidden = true
+            primary.truncationMode = reduceMotion ? .end : .none
+        }
+    }
+}
+
 final class ProgressBar: NSView {
     var onSeek: ((Double) -> Void)?
     var isEnabled = true {
@@ -166,10 +243,10 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         ("480p", "large")
     ]
 
-    private static let defaultExpandedSize = NSSize(width: 372, height: 286)
-    private static let minimumExpandedSize = NSSize(width: 340, height: 286)
+    private static let defaultExpandedSize = NSSize(width: 372, height: 307)
+    private static let minimumExpandedSize = NSSize(width: 340, height: 307)
     private static let maximumExpandedSize = NSSize(width: 640, height: 420)
-    private static let collapsedSize = NSSize(width: 90, height: 56)
+    private static let collapsedSize = NSSize(width: 97, height: 56)
     private let root: NSView
     private let expandedStack = NSStackView()
     private let compactStack = NSStackView()
@@ -184,6 +261,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     private let refreshPlaylistsButton = NSButton(frame: .zero)
     private let loginButton = NSButton(title: "ログイン", target: nil, action: nil)
     private let qualityPopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let titleMarquee = MarqueeLabel(frame: .zero)
     private let currentTimeLabel = NSTextField(labelWithString: "--:--")
     private let durationLabel = NSTextField(labelWithString: "--:--")
     private let stateLabel = NSTextField(labelWithString: "待機中")
@@ -206,6 +284,12 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     override var canBecomeKey: Bool {
         true
     }
+
+    // NSGlassEffectView のガラスは SwiftUI 実装(内部に NSVisualEffectView は無い)で、
+    // ウィンドウのキー状態に追従して非キー時は平坦な描画に落ちる。
+    // 常駐アプリのパネルはほぼ常に非キーなので、キー状態を常に true と報告して
+    // ガラス描画を維持する(イベントルーティングは NSApp.keyWindow 基準なので影響しない)
+    override var isKeyWindow: Bool { true }
 
     private static func makeFallbackRoot(frame: NSRect) -> NSVisualEffectView {
         let effect = NSVisualEffectView(frame: frame)
@@ -231,9 +315,19 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
             let content = NSView(frame: frame)
             content.autoresizingMask = [.width, .height]
             glass.contentView = content
+            // .clear のガラス感を活かし、視認性はコンテンツ背面のディム層で確保する。
+            // appearance は darkAqua(vibrantDark はガラス描画を無効化してしまう)
             glass.style = .clear
             glass.cornerRadius = 20
-            glass.appearance = NSAppearance(named: .aqua)
+            glass.appearance = NSAppearance(named: .darkAqua)
+            // darkAqua 時に glass が敷く暗色バックドロップは cornerRadius に
+            // 追従せず、四隅に四角い黒縁が残るためレイヤーごと角丸で切り落とす
+            glass.wantsLayer = true
+            glass.layer?.cornerRadius = 20
+            glass.layer?.cornerCurve = .continuous
+            glass.layer?.masksToBounds = true
+            content.wantsLayer = true
+            content.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
             root = content
             panelRoot = glass
         } else {
@@ -250,7 +344,9 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         isReleasedWhenClosed = false
         isFloatingPanel = true
         level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        // .fullScreenAuxiliary は付けない: 全画面 Space では壁紙が見えない
+        // (全面被覆で自動一時停止する)ためパネルも表示しない
+        collectionBehavior = [.canJoinAllSpaces, .stationary]
         backgroundColor = .clear
         isOpaque = false
         hasShadow = true
@@ -302,6 +398,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         ])
 
         expandedStack.addArrangedSubview(makeHeaderRow())
+        expandedStack.addArrangedSubview(makeTitleRow())
         expandedStack.addArrangedSubview(makeTransportRow())
         expandedStack.addArrangedSubview(makeTimelineRow())
         expandedStack.addArrangedSubview(makeVolumeRow())
@@ -346,7 +443,14 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         )
         constrain(expandButton, width: 28, height: 28)
 
-        [compactPlayButton, expandButton]
+        // ボタン間の区切り線。ボタン以外の場所(ここを含む余白)がドラッグ可能だと
+        // 視覚的に分かるようにする
+        let divider = NSView(frame: .zero)
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.25).cgColor
+        constrain(divider, width: 1, height: 20)
+
+        [compactPlayButton, divider, expandButton]
             .forEach(compactStack.addArrangedSubview)
     }
 
@@ -615,6 +719,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
     }
 
     func windowDidResize(_ notification: Notification) {
+        invalidateShadow()
         guard !isCollapsed, let size = contentView?.bounds.size else { return }
         expandedStackWidthConstraint.constant = max(0, size.width - 32)
         expandedUserSize = size
@@ -636,7 +741,17 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         expandedProgressBar.setProgress(progress)
     }
 
-    func updateStatus(playing: Bool, currentTime: Double, duration: Double) {
+    private func makeTitleRow() -> NSView {
+        titleMarquee.translatesAutoresizingMaskIntoConstraints = false
+        titleMarquee.heightAnchor.constraint(equalToConstant: 15).isActive = true
+        titleMarquee.setAccessibilityLabel("再生中の動画タイトル")
+        return titleMarquee
+    }
+
+    func updateStatus(playing: Bool, currentTime: Double, duration: Double, title: String? = nil) {
+        if let title, !title.isEmpty {
+            titleMarquee.text = title
+        }
         if playing != isPlayingIcon {
             isPlayingIcon = playing
             let symbol = playing ? "pause.fill" : "play.fill"
@@ -696,6 +811,7 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         expandedProgressBar.isEnabled = available
         if !available {
             setProgress(0)
+            titleMarquee.text = ""
             [currentTimeLabel, durationLabel]
                 .forEach { $0.stringValue = "--:--" }
             stateLabel.stringValue = "待機中"
@@ -790,5 +906,8 @@ final class VolumePanel: NSPanel, NSWindowDelegate {
         if !isCollapsed {
             expandedStackBottomConstraint.isActive = true
         }
+        // 透明ウィンドウは形状変更後に影を作り直さないと
+        // 旧サイズの影が四隅に黒い線として残る
+        invalidateShadow()
     }
 }

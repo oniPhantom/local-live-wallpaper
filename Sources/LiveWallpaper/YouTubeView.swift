@@ -267,6 +267,7 @@ final class YouTubeView: WKWebView, WKScriptMessageHandler {
               if (p && p.getVideoData) {
                 var d = p.getVideoData();
                 if (d && d.video_id) status.videoId = String(d.video_id);
+                if (d && d.title) status.title = String(d.title);
               }
             } catch (e) {}
             return status;
