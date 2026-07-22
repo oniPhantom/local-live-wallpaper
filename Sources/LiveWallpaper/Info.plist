@@ -2,22 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>Live Wallpaper</string>
+	<key>CFBundleExecutable</key>
+	<string>LiveWallpaper</string>
+	<key>CFBundleIconFile</key>
+	<string>icon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.local.livewallpaper</string>
 	<key>CFBundleName</key>
 	<string>LiveWallpaper</string>
-	<key>CFBundleExecutable</key>
-	<string>LiveWallpaper</string>
-	<key>CFBundleDisplayName</key>
-	<string>Live Wallpaper</string>
-	<key>CFBundleIconFile</key>
-	<string>icon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1.0</string>
+	<string>1.2.0</string>
 	<key>CFBundleVersion</key>
-	<string>3</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSPrincipalClass</key>

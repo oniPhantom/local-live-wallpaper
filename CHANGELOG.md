@@ -19,6 +19,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-21
+
 ### Added
 
 - 操作パネル展開時に再生中の動画タイトルを表示(YouTube はプレイヤー API、
@@ -127,7 +129,8 @@
 - 壁紙 CLI の make ターゲット(`make play` / `make off`)
 
 <!-- 0.1.0 は git タグを打っていないため比較リンクは省略(次回リリースからタグ運用) -->
-[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/oniPhantom/local-live-wallpaper/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/oniPhantom/local-live-wallpaper/releases/tag/v1.0.0
 [0.1.0]: https://github.com/oniPhantom/local-live-wallpaper/commits/main
